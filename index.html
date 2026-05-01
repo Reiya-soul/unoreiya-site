@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UNOREIYA カード図鑑</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div>
+        <h1>UNOREIYA カード図鑑</h1>
+        <p>キーワード・カテゴリ・シリーズ・タグ・使用可能モードでカードを絞り込めます。</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="search-panel">
+      <div class="field-group">
+        <label for="searchInput">キーワード検索</label>
+        <input type="text" id="searchInput" placeholder="カード名や効果を入力">
+      </div>
+      <div class="field-group">
+        <label for="categoryFilter">カテゴリ</label>
+        <select id="categoryFilter">
+          <option value="">すべて</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label for="seriesFilter">シリーズ</label>
+        <select id="seriesFilter">
+          <option value="">すべて</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label for="tagFilter">タグ</label>
+        <select id="tagFilter">
+          <option value="">すべて</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label for="modeFilter">使用可能モード</label>
+        <select id="modeFilter">
+          <option value="">すべて</option>
+        </select>
+      </div>
+    </section>
+
+    <section id="cardList" class="card-grid"></section>
+    <div id="noResults" class="no-results" hidden>検索条件に一致するカードがありません。</div>
+  </main>
+
+  <div id="cardModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal()">&times;</span>
+      <div class="modal-body">
+        <img id="modalImage" src="" alt="" class="modal-image">
+        <div id="modalImagePlaceholder" class="image-placeholder" style="display:none;">No Image</div>
+        <div class="modal-details">
+          <h2 id="modalName"></h2>
+          <p><strong>カテゴリ：</strong><span id="modalCategory"></span></p>
+          <p><strong>シリーズ：</strong><span id="modalSeries"></span></p>
+          <p><strong>使用可能モード：</strong><span id="modalMode"></span></p>
+          <p class="modal-effect-label"><strong>効果全文</strong></p>
+          <p id="modalEffect" class="modal-effect"></p>
+          <div id="modalTags" class="modal-tags"></div>
+        </div>
+      </div>
+      <button onclick="closeModal()" class="back-button">カード一覧に戻る</button>
+    </div>
+  </div>
+
+  <script src="cards.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
