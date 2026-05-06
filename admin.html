@@ -91,15 +91,31 @@
         </div>
       </div>
       <button type="button" id="generateBtn">カードデータを生成</button>
+      <button type="button" id="addBtn">追加</button>
+      <button type="button" id="updateBtn" style="display:none;">更新</button>
     </form>
+
+    <div id="cardList">
+      <h2>登録済みカード一覧 (<span id="cardCount">0</span>枚)</h2>
+      <button type="button" id="importBtn">cards.jsから取り込む</button>
+      <div id="cardsContainer"></div>
+    </div>
 
     <div class="admin-output">
       <h2>生成されたカードデータ</h2>
       <textarea id="output" readonly></textarea>
       <button type="button" id="copyBtn">コピー</button>
     </div>
+
+    <div class="admin-output">
+      <h2>cards.js用データ出力</h2>
+      <button type="button" id="exportBtn">cards.js用データを出力</button>
+      <textarea id="exportOutput" readonly></textarea>
+      <button type="button" id="copyExportBtn">コピー</button>
+    </div>
   </main>
 
+  <script src="cards.js"></script>
   <script src="admin.js"></script>
 </body>
 </html>
