@@ -12,6 +12,9 @@
       <div>
         <h1>UNOREIYA カード管理</h1>
         <p>カード情報を入力して、cards.jsに貼り付けられるデータを生成します。</p>
+        <nav>
+          <a href="settings.html">選択肢管理</a>
+        </nav>
       </div>
     </div>
   </header>
@@ -19,38 +22,110 @@
   <main>
     <form id="cardForm" class="admin-form">
       <div class="form-grid">
-        <div class="field-group">
-          <label for="id">カードID</label>
-          <input type="text" id="id" placeholder="例: UNR-001">
-        </div>
-        <div class="field-group">
-          <label for="name">カード名</label>
-          <input type="text" id="name" placeholder="例: 山田リョウ">
-        </div>
-        <div class="field-group">
-          <label for="effectName">効果名</label>
-          <input type="text" id="effectName" placeholder="例: 必殺の一撃">
-        </div>
+        <div class="form-row form-row--three">
+          <div class="field-group field-group--small">
+            <label for="id">カードID</label>
+            <input type="text" id="id" placeholder="例: WC001">
+          </div>
+          <div class="field-group field-group--wide">
+            <label for="name">カード名</label>
+            <input type="text" id="name" placeholder="例: ブーメラン　＋2">
+          </div>
+</div>
+
+      <div class="form-row form-row--full">
         <div class="field-group full-width">
-          <label for="effectFull">効果文</label>
-          <textarea id="effectFull" placeholder="効果文"></textarea>
+          <label for="effectFull">テキスト</label>
+          <textarea id="effectFull" placeholder="カードの効果・説明・効果名などをまとめて入力してください"></textarea>
+          </div>
+        </div>
+
+        <div class="form-row form-row--three">
+          <div class="field-group field-group--medium">
+            <label for="series">シーズン</label>
+            <select id="series">
+              <option value="">選択してください</option>
+              <option value="Original">Original</option>
+              <option value="Special">Special</option>
+              <option value="Stock制">Stock制</option>
+              <option value="UNO Flip">UNO Flip</option>
+              <option value="High Class">High Class</option>
+              <option value="その他">その他</option>
+            </select>
+          </div>
+          <div class="field-group field-group--medium">
+            <label for="category">カテゴリ</label>
+            <select id="category">
+              <option value="">選択してください</option>
+              <option value="キャラクターカード">キャラクターカード</option>
+              <option value="SPカード">SPカード</option>
+              <option value="フィールドカード">フィールドカード</option>
+              <option value="ボスカード">ボスカード</option>
+              <option value="High Class">High Class</option>
+              <option value="その他">その他</option>
+            </select>
+          </div>
+          <div class="field-group field-group--medium">
+            <label for="type">タイプ</label>
+            <select id="type">
+              <option value="">選択してください</option>
+              <option value="攻撃">攻撃</option>
+              <option value="防御">防御</option>
+              <option value="妨害">妨害</option>
+              <option value="サポート">サポート</option>
+              <option value="ドロー">ドロー</option>
+              <option value="交換">交換</option>
+              <option value="特殊">特殊</option>
+              <option value="その他">その他</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row form-row--full">
+          <div class="field-group full-width">
+            <label>タグ</label>
+            <div class="tag-input-group">
+              <select id="tagSelect"></select>
+              <button type="button" id="addTagBtn">タグを追加</button>
+            </div>
+            <div id="selectedTags" class="selected-tags"></div>
+          </div>
+        </div>
+
+        <div class="form-row form-row--full">
+          <div class="field-group full-width">
+            <label for="keywords">検索ワード (カンマ区切り)</label>
+            <input type="text" id="keywords" placeholder="例: ブーメランプラス2,ぶーめらんぷらす2">
+          </div>
+        </div>
+
+        <div class="form-row form-row--two">
+          <div class="field-group field-group--wide">
+            <label for="image">画像URL</label>
+            <input type="text" id="image" placeholder="例: images/sp001.png (空でもOK)">
+          </div>
+          <div class="field-group field-group--small">
+            <label for="viewImage">画像を見る</label>
+            <input type="text" id="viewImage" placeholder="例: Yes / No">
+          </div>
+        </div>
+      </div>
+      <button type="button" id="generateBtn">カードデータを生成</button>
+      <button type="button" id="addBtn">追加</button>
+      <button type="button" id="updateBtn" style="display:none;">更新</button>
+    </form>
+
+    <div id="cardList">
+      <h2>登録済みカード一覧 (<span id="cardCount">0</span>件 / 全<span id="cardTotalCount">0</span>件)</h2>
+      <div class="search-panel admin-filter-panel">
+        <div class="field-group">
+          <label for="adminSearchInput">一覧検索</label>
+          <input type="text" id="adminSearchInput" placeholder="カードID・名前・効果・タグなどを検索">
         </div>
         <div class="field-group">
-          <label for="series">シーズン</label>
-          <select id="series">
-            <option value="">選択してください</option>
-            <option value="Original">Original</option>
-            <option value="Special">Special</option>
-            <option value="Stock制">Stock制</option>
-            <option value="UNO Flip">UNO Flip</option>
-            <option value="High Class">High Class</option>
-            <option value="その他">その他</option>
-          </select>
-        </div>
-        <div class="field-group">
-          <label for="category">カテゴリ</label>
-          <select id="category">
-            <option value="">選択してください</option>
+          <label for="filterCategory">カテゴリ</label>
+          <select id="filterCategory">
+            <option value="">すべて</option>
             <option value="キャラクターカード">キャラクターカード</option>
             <option value="SPカード">SPカード</option>
             <option value="フィールドカード">フィールドカード</option>
@@ -60,17 +135,21 @@
           </select>
         </div>
         <div class="field-group">
-          <label for="tags">タグ (カンマ区切り)</label>
-          <input type="text" id="tags" placeholder="例: SP,強カード">
+          <label for="filterSeries">シーズン</label>
+          <select id="filterSeries">
+            <option value="">すべて</option>
+            <option value="Original">Original</option>
+            <option value="Special">Special</option>
+            <option value="Stock制">Stock制</option>
+            <option value="UNO Flip">UNO Flip</option>
+            <option value="High Class">High Class</option>
+            <option value="その他">その他</option>
+          </select>
         </div>
         <div class="field-group">
-          <label for="keywords">検索ワード (カンマ区切り)</label>
-          <input type="text" id="keywords" placeholder="例: 山田,必殺,SP">
-        </div>
-        <div class="field-group">
-          <label for="type">タイプ</label>
-          <select id="type">
-            <option value="">選択してください</option>
+          <label for="filterType">タイプ</label>
+          <select id="filterType">
+            <option value="">すべて</option>
             <option value="攻撃">攻撃</option>
             <option value="防御">防御</option>
             <option value="妨害">妨害</option>
@@ -81,22 +160,7 @@
             <option value="その他">その他</option>
           </select>
         </div>
-        <div class="field-group">
-          <label for="image">画像URL</label>
-          <input type="text" id="image" placeholder="例: images/sp001.png (空でもOK)">
-        </div>
-        <div class="field-group">
-          <label for="viewImage">画像を見る</label>
-          <input type="text" id="viewImage" placeholder="例: Yes / No">
-        </div>
       </div>
-      <button type="button" id="generateBtn">カードデータを生成</button>
-      <button type="button" id="addBtn">追加</button>
-      <button type="button" id="updateBtn" style="display:none;">更新</button>
-    </form>
-
-    <div id="cardList">
-      <h2>登録済みカード一覧 (<span id="cardCount">0</span>枚)</h2>
       <button type="button" id="importBtn">cards.jsから取り込む</button>
       <div id="cardsContainer"></div>
     </div>
@@ -112,6 +176,17 @@
       <button type="button" id="exportBtn">cards.js用データを出力</button>
       <textarea id="exportOutput" readonly></textarea>
       <button type="button" id="copyExportBtn">コピー</button>
+    </div>
+
+    <div class="admin-output">
+      <h2>管理データバックアップ</h2>
+      <button type="button" id="backupExportBtn">管理データをバックアップ出力</button>
+      <textarea id="backupOutput" readonly placeholder="ここにバックアップJSONが表示されます"></textarea>
+      <button type="button" id="copyBackupBtn">コピー</button>
+      <h3>バックアップから復元</h3>
+      <textarea id="backupInput" placeholder="ここにバックアップJSONを貼り付けてください"></textarea>
+      <button type="button" id="backupImportBtn">バックアップを読み込む</button>
+      <button type="button" id="clearAllBtn">管理データを全削除</button>
     </div>
   </main>
 

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UNOREIYA 選択肢管理</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div>
+        <h1>UNOREIYA 選択肢管理</h1>
+        <p>カード登録で使う選択肢を管理します。</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <nav>
+      <a href="admin.html">カード管理に戻る</a>
+    </nav>
+
+    <section id="seasonsSection" class="settings-section">
+      <h2>シーズン</h2>
+      <div class="settings-form">
+        <input type="text" id="seasonInput" placeholder="新しいシーズンを入力">
+        <button type="button" id="addSeasonBtn">追加</button>
+        <button type="button" id="updateSeasonBtn" style="display:none;">更新</button>
+      </div>
+      <ul id="seasonsList" class="settings-list"></ul>
+    </section>
+
+    <section id="categoriesSection" class="settings-section">
+      <h2>カテゴリ</h2>
+      <div class="settings-form">
+        <input type="text" id="categoryInput" placeholder="新しいカテゴリを入力">
+        <button type="button" id="addCategoryBtn">追加</button>
+        <button type="button" id="updateCategoryBtn" style="display:none;">更新</button>
+      </div>
+      <ul id="categoriesList" class="settings-list"></ul>
+    </section>
+
+    <section id="typesSection" class="settings-section">
+      <h2>タイプ</h2>
+      <div class="settings-form">
+        <input type="text" id="typeInput" placeholder="新しいタイプを入力">
+        <button type="button" id="addTypeBtn">追加</button>
+        <button type="button" id="updateTypeBtn" style="display:none;">更新</button>
+      </div>
+      <ul id="typesList" class="settings-list"></ul>
+    </section>
+
+    <section id="tagsSection" class="settings-section">
+      <h2>タグ</h2>
+      <div class="settings-form">
+        <input type="text" id="tagInput" placeholder="新しいタグを入力">
+        <button type="button" id="addTagBtn">追加</button>
+        <button type="button" id="updateTagBtn" style="display:none;">更新</button>
+      </div>
+      <ul id="tagsList" class="settings-list"></ul>
+    </section>
+  </main>
+
+  <script src="settings.js"></script>
+</body>
+</html>
