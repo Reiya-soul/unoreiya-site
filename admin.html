@@ -7,12 +7,25 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <section id="adminLogin" class="admin-login">
+    <form id="adminLoginForm" class="admin-login-box">
+      <h1>UNOREIYA カード管理</h1>
+      <p>管理画面を開くにはパスワードを入力してください。</p>
+      <label for="adminPassword">パスワード</label>
+      <input type="password" id="adminPassword" autocomplete="current-password">
+      <p id="adminLoginError" class="admin-login-error" hidden>パスワードが違います</p>
+      <button type="submit">ログイン</button>
+    </form>
+  </section>
+
+  <div id="adminContent" hidden>
   <header>
     <div class="header-inner">
       <div>
         <h1>UNOREIYA カード管理</h1>
-        <p>カード情報を入力して、cards.jsに貼り付けられるデータを生成します。</p>
-        <nav>
+        <p>カード情報を登録・編集して、カード図鑑へ反映します。</p>
+        <nav class="page-nav" aria-label="管理ページ切り替え">
+          <a href="admin.html" class="active" aria-current="page">カード管理</a>
           <a href="settings.html">選択肢管理</a>
         </nav>
       </div>
@@ -35,7 +48,10 @@
 
       <div class="form-row form-row--full">
         <div class="field-group full-width">
-          <label for="effectFull">テキスト</label>
+          <div class="textarea-label-row">
+            <label for="effectFull">テキスト</label>
+            <button type="button" id="boldTextBtn" class="format-button">太字</button>
+          </div>
           <textarea id="effectFull" placeholder="カードの効果・説明・効果名などをまとめて入力してください"></textarea>
           </div>
         </div>
@@ -66,7 +82,7 @@
             </select>
           </div>
           <div class="field-group field-group--medium">
-            <label for="type">タイプ</label>
+            <label for="type">モード</label>
             <select id="type">
               <option value="">選択してください</option>
               <option value="攻撃">攻撃</option>
@@ -99,15 +115,11 @@
           </div>
         </div>
 
-        <div class="form-row form-row--two">
-          <div class="field-group field-group--wide">
-            <label for="image">画像ファイル名 / 画像パス</label>
-            <input type="text" id="image" placeholder="例: images/sp001.png (空でもOK)">
-          </div>
-          <div class="field-group field-group--wide">
+        <div class="form-row form-row--full">
+          <input type="hidden" id="image">
+          <div class="field-group full-width">
             <label for="imageFile">画像ファイルを選択</label>
             <input type="file" id="imageFile" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
-            <button type="button" id="uploadImageBtn" class="secondary-button">Supabaseに画像をアップロード</button>
             <p id="uploadImageStatus" class="upload-status"></p>
           </div>
         </div>
@@ -122,9 +134,9 @@
           </div>
         </div>
       </div>
-      <button type="button" id="generateBtn">カードデータを生成</button>
       <button type="button" id="addBtn">追加</button>
       <button type="button" id="updateBtn" style="display:none;">更新</button>
+      <button type="button" id="cancelBtn" class="cancel-button">キャンセル</button>
     </form>
 
     <div id="cardList">
@@ -159,7 +171,7 @@
           </select>
         </div>
         <div class="field-group">
-          <label for="filterType">タイプ</label>
+          <label for="filterType">モード</label>
           <select id="filterType">
             <option value="">すべて</option>
             <option value="攻撃">攻撃</option>
@@ -173,36 +185,12 @@
           </select>
         </div>
       </div>
-      <button type="button" id="importBtn">cards.jsから取り込む</button>
       <div id="cardsContainer"></div>
     </div>
 
-    <div class="admin-output">
-      <h2>生成されたカードデータ</h2>
-      <textarea id="output" readonly></textarea>
-      <button type="button" id="copyBtn">コピー</button>
-    </div>
-
-    <div class="admin-output">
-      <h2>cards.js用データ出力</h2>
-      <button type="button" id="exportBtn">cards.js用データを出力</button>
-      <textarea id="exportOutput" readonly></textarea>
-      <button type="button" id="copyExportBtn">コピー</button>
-    </div>
-
-    <div class="admin-output">
-      <h2>管理データバックアップ</h2>
-      <button type="button" id="backupExportBtn">管理データをバックアップ出力</button>
-      <textarea id="backupOutput" readonly placeholder="ここにバックアップJSONが表示されます"></textarea>
-      <button type="button" id="copyBackupBtn">コピー</button>
-      <h3>バックアップから復元</h3>
-      <textarea id="backupInput" placeholder="ここにバックアップJSONを貼り付けてください"></textarea>
-      <button type="button" id="backupImportBtn">バックアップを読み込む</button>
-      <button type="button" id="clearAllBtn">管理データを全削除</button>
-    </div>
   </main>
+  </div>
 
-  <script src="cards.js"></script>
   <script src="admin.js"></script>
 </body>
 </html>

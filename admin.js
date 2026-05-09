@@ -1,8 +1,55 @@
+const ADMIN_PASSWORD = 'unoreiya';
+const ADMIN_AUTH_STORAGE_KEY = 'unoreiyaAdminAuthenticated';
 let editingIndex = -1;
 let adminCards = [];
 let imagePreviewObjectUrl = '';
 const supportedImageExtensions = ['png', 'jpg', 'jpeg', 'webp'];
 const CARD_IMAGE_BUCKET = 'card-images';
+let adminCardsLoaded = false;
+
+function isAdminAuthenticated() {
+  return sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY) === 'true';
+}
+
+function showAdminContent() {
+  document.getElementById('adminLogin').hidden = true;
+  document.getElementById('adminContent').hidden = false;
+  if (!adminCardsLoaded) {
+    loadCards();
+    adminCardsLoaded = true;
+  }
+}
+
+function showAdminLogin() {
+  document.getElementById('adminLogin').hidden = false;
+  document.getElementById('adminContent').hidden = true;
+  document.getElementById('adminPassword').focus();
+}
+
+function handleAdminLogin(event) {
+  event.preventDefault();
+  const passwordInput = document.getElementById('adminPassword');
+  const errorMessage = document.getElementById('adminLoginError');
+  if (passwordInput.value === ADMIN_PASSWORD) {
+    sessionStorage.setItem(ADMIN_AUTH_STORAGE_KEY, 'true');
+    passwordInput.value = '';
+    errorMessage.hidden = true;
+    showAdminContent();
+    return;
+  }
+
+  errorMessage.hidden = false;
+  passwordInput.select();
+}
+
+function initializeAdminAuth() {
+  document.getElementById('adminLoginForm').addEventListener('submit', handleAdminLogin);
+  if (isAdminAuthenticated()) {
+    showAdminContent();
+  } else {
+    showAdminLogin();
+  }
+}
 
 function loadSettings() {
   const settings = JSON.parse(localStorage.getItem('settings') || '{}');
@@ -61,10 +108,6 @@ function normalizeTags(tags) {
   return [];
 }
 
-function buildImagePathFromFileName(fileName) {
-  return fileName ? `images/${fileName}` : '';
-}
-
 function getFileExtension(fileName) {
   const extension = fileName.split('.').pop();
   return extension ? extension.toLowerCase() : '';
@@ -100,6 +143,98 @@ function isDuplicateStorageError(error) {
 async function getSupabaseClient() {
   const { supabaseClient } = await import('./supabase.js');
   return supabaseClient;
+}
+
+function addCacheBuster(url) {
+  if (!url) return '';
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}v=${Date.now()}`;
+}
+
+async function uploadImageFile(supabaseClient, storageFileName, file, options = {}) {
+  return supabaseClient.storage
+    .from(CARD_IMAGE_BUCKET)
+    .upload(storageFileName, file, options);
+}
+
+async function uploadImageFileWithOverwrite(supabaseClient, storageFileName, file) {
+  const uploadOptions = {
+    cacheControl: '3600',
+    contentType: file.type || undefined,
+    upsert: true
+  };
+
+  let uploadResult = await uploadImageFile(supabaseClient, storageFileName, file, uploadOptions);
+  if (!uploadResult.error) {
+    return uploadResult;
+  }
+
+  const firstError = uploadResult.error;
+  const { error: removeError } = await supabaseClient.storage
+    .from(CARD_IMAGE_BUCKET)
+    .remove([storageFileName]);
+
+  if (removeError) {
+    return { data: null, error: firstError };
+  }
+
+  return uploadImageFile(supabaseClient, storageFileName, file, {
+    cacheControl: '3600',
+    contentType: file.type || undefined
+  });
+}
+
+function toSupabaseCard(card) {
+  const normalized = normalizeCard(card);
+  return {
+    id: normalized.id,
+    name: normalized.name,
+    text: normalized.text,
+    effectShort: normalized.effectShort,
+    series: normalized.series,
+    category: normalized.category,
+    tags: normalized.tags,
+    keywords: normalized.keywords,
+    type: normalized.type,
+    image: normalized.image
+  };
+}
+
+async function saveCardToSupabase(card) {
+  const supabaseClient = await getSupabaseClient();
+  const { error } = await supabaseClient
+    .from('cards')
+    .upsert(toSupabaseCard(card), { onConflict: 'id' });
+  if (error) {
+    throw error;
+  }
+}
+
+async function deleteCardFromSupabase(cardId) {
+  const supabaseClient = await getSupabaseClient();
+  const { error } = await supabaseClient
+    .from('cards')
+    .delete()
+    .eq('id', cardId);
+  if (error) {
+    throw error;
+  }
+}
+
+async function syncCardToSupabase(card, actionLabel) {
+  try {
+    await saveCardToSupabase(card);
+  } catch (error) {
+    alert(`${actionLabel}はlocalStorageに保存しましたが、Supabaseへの保存に失敗しました。\n${error.message}`);
+  }
+}
+
+async function syncDeleteToSupabase(cardId) {
+  try {
+    await deleteCardFromSupabase(cardId);
+  } catch (error) {
+    alert(`localStorageから削除しましたが、Supabaseからの削除に失敗しました。\n${error.message}`);
+  }
 }
 
 function clearImagePreviewObjectUrl() {
@@ -146,9 +281,6 @@ function handleImageFileChange(event) {
     return;
   }
 
-  const imageInput = document.getElementById('image');
-  imageInput.value = buildImagePathFromFileName(file.name);
-
   clearImagePreviewObjectUrl();
   imagePreviewObjectUrl = URL.createObjectURL(file);
   const preview = document.getElementById('imagePreview');
@@ -161,88 +293,136 @@ function handleImageFileChange(event) {
   setUploadImageStatus('');
 }
 
-async function uploadSelectedImageToSupabase() {
-  const file = getSelectedImageFile();
-  const cardId = document.getElementById('id').value.trim();
-
+async function uploadSelectedImageForCard(cardId, file) {
   if (!cardId) {
     alert('画像をアップロードする前にカードIDを入力してください。');
-    return;
+    return '';
   }
   if (!file) {
-    alert('アップロードする画像ファイルを選択してください。');
-    return;
+    return '';
   }
   if (!isSupportedImageFileName(file.name)) {
     alert('画像は png / jpg / jpeg / webp のいずれかを選択してください。');
-    return;
+    return '';
   }
 
   const storageFileName = getSupabaseImageFileName(cardId, file.name);
   if (!storageFileName) {
     alert('カードIDまたは画像ファイル名を確認してください。');
-    return;
+    return '';
   }
 
-  const uploadButton = document.getElementById('uploadImageBtn');
-  uploadButton.disabled = true;
-  setUploadImageStatus('アップロード中...');
+  setUploadImageStatus('画像をアップロード中...');
 
   let supabaseClient;
   try {
     supabaseClient = await getSupabaseClient();
   } catch (error) {
-    uploadButton.disabled = false;
     setUploadImageStatus('Supabaseを読み込めませんでした。', true);
     alert(`Supabaseを読み込めませんでした: ${error.message}`);
-    return;
+    return '';
   }
 
   let uploadResult;
   try {
-    uploadResult = await supabaseClient.storage
-      .from(CARD_IMAGE_BUCKET)
-      .upload(storageFileName, file, {
-        cacheControl: '3600',
-        contentType: file.type || undefined
-      });
+    uploadResult = await uploadImageFileWithOverwrite(supabaseClient, storageFileName, file);
   } catch (error) {
-    uploadButton.disabled = false;
-    const message = isDuplicateStorageError(error) ? '同じファイル名が存在します。' : 'アップロードに失敗しました。';
+    const message = 'アップロードに失敗しました。';
     setUploadImageStatus(message, true);
     alert(`${message}${error.message ? `\n${error.message}` : ''}`);
-    return;
+    return '';
   }
 
   const uploadError = uploadResult.error;
   if (uploadError) {
-    uploadButton.disabled = false;
-    const message = isDuplicateStorageError(uploadError) ? '同じファイル名が存在します。' : 'アップロードに失敗しました。';
+    const message = isDuplicateStorageError(uploadError) ? '同じファイル名の上書きに失敗しました。' : 'アップロードに失敗しました。';
     setUploadImageStatus(message, true);
     alert(`${message}${uploadError.message ? `\n${uploadError.message}` : ''}`);
-    return;
+    return '';
   }
 
   const { data } = supabaseClient.storage
     .from(CARD_IMAGE_BUCKET)
     .getPublicUrl(storageFileName);
-  const publicUrl = data?.publicUrl || '';
+  const publicUrl = addCacheBuster(data?.publicUrl || '');
 
   if (!publicUrl) {
-    uploadButton.disabled = false;
     setUploadImageStatus('公開URLを取得できませんでした。', true);
     alert('公開URLを取得できませんでした。');
-    return;
+    return '';
+  }
+
+  setUploadImageStatus('画像アップロード完了');
+  return publicUrl;
+}
+
+async function attachSelectedImageToCard(card, existingCard = null) {
+  const file = getSelectedImageFile();
+  if (!file) {
+    return {
+      ...card,
+      image: card.image || existingCard?.image || ''
+    };
+  }
+
+  const publicUrl = await uploadSelectedImageForCard(card.id, file);
+  if (!publicUrl) {
+    return null;
   }
 
   document.getElementById('image').value = publicUrl;
   updateImagePreview(publicUrl);
-  setUploadImageStatus('アップロード完了');
-  uploadButton.disabled = false;
+  return {
+    ...card,
+    image: publicUrl
+  };
 }
 
 function getShortText(text) {
   return text.length > 40 ? text.substring(0, 40) + '...' : text;
+}
+
+function appendTextWithBreaks(parent, text) {
+  const lines = String(text || '').split('\n');
+  lines.forEach((line, index) => {
+    if (index > 0) {
+      parent.appendChild(document.createElement('br'));
+    }
+    if (line) {
+      parent.appendChild(document.createTextNode(line));
+    }
+  });
+}
+
+function appendFormattedText(parent, text) {
+  const parts = String(text || '').split('**');
+  parts.forEach((part, index) => {
+    if (!part) return;
+    const isClosedBold = index % 2 === 1 && index < parts.length - 1;
+    if (isClosedBold) {
+      const strong = document.createElement('strong');
+      appendTextWithBreaks(strong, part);
+      parent.appendChild(strong);
+    } else if (index % 2 === 1) {
+      parent.appendChild(document.createTextNode(`**${part}`));
+    } else {
+      appendTextWithBreaks(parent, part);
+    }
+  });
+}
+
+function createCardListParagraph(label, value, formatValue = false) {
+  const paragraph = document.createElement('p');
+  const labelElement = document.createElement('strong');
+  labelElement.textContent = `${label}:`;
+  paragraph.appendChild(labelElement);
+  paragraph.appendChild(document.createTextNode(' '));
+  if (formatValue) {
+    appendFormattedText(paragraph, value);
+  } else {
+    paragraph.appendChild(document.createTextNode(value || ''));
+  }
+  return paragraph;
 }
 
 function normalizeCard(card) {
@@ -259,7 +439,7 @@ function normalizeCard(card) {
     tags: normalizeTags(card.tags),
     keywords: normalizeTags(card.keywords),
     type: type,
-    image: card.image || ''
+    image: typeof card.image === 'string' ? card.image.trim() : ''
   };
 }
 
@@ -311,19 +491,6 @@ function addSelectedTag(tag) {
   };
   tagDiv.appendChild(removeBtn);
   selectedTagsDiv.appendChild(tagDiv);
-}
-
-function importFromCardsJs() {
-  if (!window.cards || !Array.isArray(window.cards)) {
-    alert('cards.jsが読み込まれていません。');
-    return;
-  }
-  const existingIds = new Set(adminCards.map(c => c.id));
-  const newCards = window.cards.map(normalizeCard).filter(card => !existingIds.has(card.id));
-  adminCards = adminCards.concat(newCards);
-  saveCards(adminCards);
-  applyFilters();
-  alert(`${newCards.length}枚のカードを取り込みました。`);
 }
 
 function loadCards() {
@@ -398,22 +565,36 @@ function applyFilters() {
   renderCardList(filteredCards);
 }
 
-function addCard(card) {
+function scrollToCardForm() {
+  document.getElementById('cardForm')?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start'
+  });
+}
+
+async function addCard(card) {
   if (editingIndex >= 0) {
-    updateCard(editingIndex, card);
+    await updateCard(editingIndex, card);
     return;
   }
-  if (adminCards.some(existing => existing.id === card.id)) {
-    alert('同じIDのカードが既に存在します。');
+  const existingIndex = adminCards.findIndex(existing => existing.id === card.id);
+  if (existingIndex !== -1) {
+    await updateCard(existingIndex, card);
     return;
   }
-  adminCards.push(card);
+  const cardToSave = await attachSelectedImageToCard(card);
+  if (!cardToSave) {
+    return;
+  }
+
+  adminCards.push(cardToSave);
   saveCards(adminCards);
   applyFilters();
   clearForm();
+  await syncCardToSupabase(cardToSave, 'カード追加');
 }
 
-function updateCard(index, card) {
+async function updateCard(index, card) {
   if (index < 0 || index >= adminCards.length) {
     return;
   }
@@ -422,20 +603,30 @@ function updateCard(index, card) {
     alert('編集中のIDは既に他のカードで使われています。');
     return;
   }
-  adminCards[index] = card;
+  const cardToSave = await attachSelectedImageToCard(card, adminCards[index]);
+  if (!cardToSave) {
+    return;
+  }
+
+  adminCards[index] = cardToSave;
   saveCards(adminCards);
   applyFilters();
   clearForm();
   editingIndex = -1;
   document.getElementById('addBtn').style.display = 'inline-block';
   document.getElementById('updateBtn').style.display = 'none';
+  await syncCardToSupabase(cardToSave, 'カード更新');
 }
 
-function deleteCard(index) {
+async function deleteCard(index) {
   if (confirm('このカードを削除しますか？')) {
+    const card = adminCards[index];
     adminCards.splice(index, 1);
     saveCards(adminCards);
     applyFilters();
+    if (card?.id) {
+      await syncDeleteToSupabase(card.id);
+    }
   }
 }
 
@@ -455,16 +646,25 @@ function renderCardList(cards) {
     const typeText = card.type || 'なし';
     const cardTags = Array.isArray(card.tags) ? card.tags : typeof card.tags === 'string' ? card.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
     const tagsText = cardTags.length > 0 ? cardTags.join(', ') : 'なし';
-    cardDiv.innerHTML = `
-      <p><strong>ID:</strong> ${card.id}</p>
-      <p><strong>名前:</strong> ${card.name}</p>
-      <p><strong>カテゴリ:</strong> ${categoryText}</p>
-      <p><strong>シーズン:</strong> ${seriesText}</p>
-      <p><strong>タイプ:</strong> ${typeText}</p>
-      <p><strong>タグ:</strong> ${tagsText}</p>
-      <button onclick="editCard(${originalIndex})">編集</button>
-      <button onclick="deleteCard(${originalIndex})">削除</button>
-    `;
+    cardDiv.appendChild(createCardListParagraph('ID', card.id));
+    cardDiv.appendChild(createCardListParagraph('名前', card.name));
+    cardDiv.appendChild(createCardListParagraph('テキスト', card.text || card.effectShort || '', true));
+    cardDiv.appendChild(createCardListParagraph('カテゴリ', categoryText));
+    cardDiv.appendChild(createCardListParagraph('シーズン', seriesText));
+    cardDiv.appendChild(createCardListParagraph('モード', typeText));
+    cardDiv.appendChild(createCardListParagraph('タグ', tagsText));
+
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.textContent = '編集';
+    editButton.addEventListener('click', () => editCard(originalIndex));
+    cardDiv.appendChild(editButton);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.textContent = '削除';
+    deleteButton.addEventListener('click', () => deleteCard(originalIndex));
+    cardDiv.appendChild(deleteButton);
     container.appendChild(cardDiv);
   });
 }
@@ -476,6 +676,7 @@ function editCard(index) {
   editingIndex = index;
   document.getElementById('addBtn').style.display = 'none';
   document.getElementById('updateBtn').style.display = 'inline-block';
+  scrollToCardForm();
 }
 
 function populateForm(card) {
@@ -496,102 +697,65 @@ function populateForm(card) {
 function clearForm() {
   document.getElementById('cardForm').reset();
   setSelectedTags([]);
+  setUploadImageStatus('');
   updateImagePreview('');
 }
 
-function exportCardsData() {
-  const cards = JSON.parse(localStorage.getItem('adminCards') || '[]').map(normalizeCard);
-  const output = `window.cards = ${JSON.stringify(cards, null, 2)};`;
-  document.getElementById('exportOutput').value = output;
+function resetFormState() {
+  clearForm();
+  editingIndex = -1;
+  document.getElementById('addBtn').style.display = 'inline-block';
+  document.getElementById('updateBtn').style.display = 'none';
+  scrollToCardForm();
 }
 
-function backupExportData() {
-  const cards = JSON.parse(localStorage.getItem('adminCards') || '[]').map(normalizeCard);
-  document.getElementById('backupOutput').value = JSON.stringify(cards, null, 2);
-}
+function wrapSelectedTextWithBold() {
+  const textarea = document.getElementById('effectFull');
+  const selectionStart = textarea.selectionStart;
+  const selectionEnd = textarea.selectionEnd;
+  const selectedText = textarea.value.slice(selectionStart, selectionEnd);
+  const before = textarea.value.slice(0, selectionStart);
+  const after = textarea.value.slice(selectionEnd);
 
-function backupImportData() {
-  const input = document.getElementById('backupInput').value.trim();
-  if (!input) {
-    alert('バックアップJSONを入力してください。');
-    return;
+  textarea.value = `${before}**${selectedText}**${after}`;
+  textarea.focus();
+
+  if (selectedText) {
+    textarea.setSelectionRange(selectionStart, selectionEnd + 4);
+  } else {
+    textarea.setSelectionRange(selectionStart + 2, selectionStart + 2);
   }
-  let cards;
+}
+
+function setSaveButtonsDisabled(disabled) {
+  document.getElementById('addBtn').disabled = disabled;
+  document.getElementById('updateBtn').disabled = disabled;
+  document.getElementById('cancelBtn').disabled = disabled;
+}
+
+document.getElementById('addBtn').addEventListener('click', async function() {
+  setSaveButtonsDisabled(true);
   try {
-    cards = JSON.parse(input);
-  } catch (error) {
-    alert('JSON形式が正しくありません。');
-    return;
+    await addCard(buildCardFromForm());
+  } finally {
+    setSaveButtonsDisabled(false);
+    scrollToCardForm();
   }
-  if (!Array.isArray(cards)) {
-    alert('バックアップはカード配列の形式である必要があります。');
-    return;
+});
+
+document.getElementById('updateBtn').addEventListener('click', async function() {
+  setSaveButtonsDisabled(true);
+  try {
+    await updateCard(editingIndex, buildCardFromForm());
+  } finally {
+    setSaveButtonsDisabled(false);
+    scrollToCardForm();
   }
-  saveCards(cards);
-  applyFilters();
-  clearForm();
-  editingIndex = -1;
-  document.getElementById('addBtn').style.display = 'inline-block';
-  document.getElementById('updateBtn').style.display = 'none';
-  alert('バックアップを復元しました。');
-}
-
-function clearAllData() {
-  if (!confirm('管理データを全削除しますか？')) {
-    return;
-  }
-  adminCards = [];
-  saveCards(adminCards);
-  applyFilters();
-  clearForm();
-  editingIndex = -1;
-  document.getElementById('addBtn').style.display = 'inline-block';
-  document.getElementById('updateBtn').style.display = 'none';
-}
-
-document.getElementById('generateBtn').addEventListener('click', function() {
-  const output = JSON.stringify(buildCardFromForm(), null, 2);
-  document.getElementById('output').value = output;
 });
 
-document.getElementById('copyBtn').addEventListener('click', function() {
-  const output = document.getElementById('output');
-  output.select();
-  document.execCommand('copy');
-  alert('コピーしました！');
-});
+document.getElementById('cancelBtn').addEventListener('click', resetFormState);
 
-document.getElementById('addBtn').addEventListener('click', function() {
-  addCard(buildCardFromForm());
-});
-
-document.getElementById('updateBtn').addEventListener('click', function() {
-  updateCard(editingIndex, buildCardFromForm());
-});
-
-document.getElementById('exportBtn').addEventListener('click', exportCardsData);
-
-document.getElementById('copyExportBtn').addEventListener('click', function() {
-  const output = document.getElementById('exportOutput');
-  output.select();
-  document.execCommand('copy');
-  alert('コピーしました！');
-});
-
-document.getElementById('backupExportBtn').addEventListener('click', backupExportData);
-
-document.getElementById('copyBackupBtn').addEventListener('click', function() {
-  const output = document.getElementById('backupOutput');
-  output.select();
-  document.execCommand('copy');
-  alert('コピーしました！');
-});
-
-document.getElementById('backupImportBtn').addEventListener('click', backupImportData);
-
-document.getElementById('clearAllBtn').addEventListener('click', clearAllData);
-
-document.getElementById('importBtn').addEventListener('click', importFromCardsJs);
+document.getElementById('boldTextBtn').addEventListener('click', wrapSelectedTextWithBold);
 
 document.getElementById('adminSearchInput').addEventListener('input', applyFilters);
 
@@ -603,11 +767,9 @@ document.getElementById('filterType').addEventListener('change', applyFilters);
 
 document.getElementById('imageFile').addEventListener('change', handleImageFileChange);
 
-document.getElementById('image').addEventListener('input', updateImagePreviewFromPath);
-
-document.getElementById('uploadImageBtn').addEventListener('click', uploadSelectedImageToSupabase);
+document.getElementById('image')?.addEventListener('input', updateImagePreviewFromPath);
 
 window.editCard = editCard;
 window.deleteCard = deleteCard;
 
-window.addEventListener('load', loadCards);
+window.addEventListener('load', initializeAdminAuth);

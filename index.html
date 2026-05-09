@@ -11,7 +11,7 @@
     <div class="header-inner">
       <div>
         <h1>UNOREIYA カード図鑑</h1>
-        <p>キーワード・カテゴリ・シリーズ・タグ・使用可能モードでカードを絞り込めます。</p>
+        <p>キーワード・カテゴリ・シーズン・タグ・モードでカードを絞り込めます。</p>
       </div>
     </div>
   </header>
@@ -32,13 +32,13 @@
           </select>
         </div>
         <div class="field-group">
-          <label for="seriesFilter">シリーズ</label>
+          <label for="seriesFilter">シーズン</label>
           <select id="seriesFilter">
             <option value="">すべて</option>
           </select>
         </div>
         <div class="field-group">
-          <label for="modeFilter">使用可能モード</label>
+          <label for="modeFilter">モード</label>
           <select id="modeFilter">
             <option value="">すべて</option>
           </select>
@@ -53,6 +53,7 @@
     </section>
 
     <section id="cardList" class="card-grid"></section>
+    <div id="dataStatus" class="data-status"></div>
     <div id="noResults" class="no-results" hidden>検索条件に一致するカードがありません。</div>
   </main>
 
@@ -66,8 +67,8 @@
           <h2 id="modalName"></h2>
           <p><strong>ID: </strong><span id="modalId"></span></p>
           <p><strong>カテゴリ：</strong><span id="modalCategory"></span></p>
-          <p><strong>シリーズ：</strong><span id="modalSeries"></span></p>
-          <p><strong>タイプ：</strong><span id="modalType"></span></p>
+          <p><strong>シーズン：</strong><span id="modalSeries"></span></p>
+          <p><strong>モード：</strong><span id="modalType"></span></p>
           <p class="modal-effect-label"><strong>効果全文</strong></p>
           <p id="modalEffect" class="modal-effect"></p>
           <p><strong>タグ：</strong></p>

@@ -5,6 +5,10 @@
   color: #1f2937;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 header {
   background: linear-gradient(135deg, #0f172a 0%, #111827 100%);
   color: white;
@@ -25,6 +29,36 @@ header p {
   margin: 10px 0 0;
   color: #cbd5e1;
   line-height: 1.6;
+}
+
+.page-nav {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 22px 0 0;
+  transform: translateX(70px);
+}
+
+.page-nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 130px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.1);
+  color: #e5eefc;
+  text-decoration: none;
+  font-weight: 700;
+  box-sizing: border-box;
+}
+
+.page-nav a:hover,
+.page-nav a.active {
+  background: white;
+  color: #0f172a;
+  text-decoration: none;
 }
 
 main {
@@ -144,19 +178,26 @@ main {
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fill, 210px);
+  gap: 28px 28px;
+  justify-content: center;
+  align-items: start;
 }
 
 .card {
+  width: 210px;
+  height: 430px;
+  box-sizing: border-box;
   background: white;
-  border-radius: 20px;
-  padding: 18px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  padding: 10px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
 }
 
 .card:hover {
@@ -166,16 +207,19 @@ main {
 
 .card-image {
   width: 100%;
-  height: auto;
-  border-radius: 16px;
-  margin-bottom: 16px;
-  object-fit: cover;
+  height: 294px;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  object-fit: contain;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  box-sizing: border-box;
 }
 
 .image-placeholder {
   width: 100%;
-  min-height: 300px;
-  border-radius: 16px;
+  height: 294px;
+  border-radius: 10px;
   background: #f1f5f9;
   color: #64748b;
   display: flex;
@@ -185,7 +229,7 @@ main {
   padding: 20px;
   box-sizing: border-box;
   font-size: 0.95rem;
-  margin-bottom: 16px;
+  margin-bottom: 4px;
 }
 
 .admin-image-preview {
@@ -203,29 +247,46 @@ main {
 }
 
 .admin-image-preview .image-placeholder {
+  height: 180px;
   min-height: 180px;
   margin-bottom: 0;
 }
 
 .modal-body .image-placeholder {
-  min-height: 400px;
-  max-height: 520px;
+  height: min(70vh, 560px);
+  min-height: 260px;
+  max-height: min(70vh, 560px);
 }
 
 .card h2 {
-  margin-top: 0;
+  margin: 0;
   color: #0f172a;
-  font-size: 1.1rem;
+  font-size: 0.98rem;
+  line-height: 1.35;
+  min-height: 3em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card p {
-  margin: 6px 0;
-  line-height: 1.55;
+  margin: 0;
+  line-height: 1.45;
   color: #475569;
+  font-size: 0.88rem;
+  min-height: 3.1em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card .tag-list {
   margin-top: auto;
+  min-height: 28px;
+  max-height: 54px;
+  overflow: hidden;
 }
 
 .tag {
@@ -338,8 +399,33 @@ main {
   font-size: 1rem;
 }
 
+.data-status {
+  margin-top: 24px;
+  text-align: center;
+  color: #2563eb;
+  font-size: 0.95rem;
+}
+
+.data-status.is-error {
+  color: #b45309;
+}
+
 @media (max-width: 768px) {
   .card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  }
+
+  .card {
+    width: auto;
+    height: 410px;
+  }
+
+  .card-image,
+  .image-placeholder {
+    height: 270px;
+  }
+
+  .modal-body {
     grid-template-columns: 1fr;
   }
 
@@ -353,6 +439,12 @@ main {
 @media (max-width: 480px) {
   header {
     padding: 24px 16px;
+  }
+
+  .page-nav {
+    transform: none;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .modal-content {
@@ -400,9 +492,13 @@ main {
 
 .modal-image {
   width: 100%;
+  height: auto;
   border-radius: 20px;
-  max-height: 520px;
-  object-fit: cover;
+  max-height: calc(100vh - 180px);
+  object-fit: contain;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  box-sizing: border-box;
 }
 
 .modal-details {
@@ -459,6 +555,71 @@ main {
 }
 
 /* Admin styles */
+.admin-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.admin-login-box {
+  width: min(100%, 420px);
+  padding: 28px;
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+  box-sizing: border-box;
+}
+
+.admin-login-box h1 {
+  color: #0f172a;
+  font-size: 1.6rem;
+}
+
+.admin-login-box p {
+  color: #475569;
+  line-height: 1.6;
+}
+
+.admin-login-box label {
+  display: block;
+  margin-top: 18px;
+  font-weight: 700;
+}
+
+.admin-login-box input {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+.admin-login-box button {
+  width: 100%;
+  margin-top: 18px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 12px;
+  background: #0f172a;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-login-box button:hover {
+  background: #1e293b;
+}
+
+.admin-login-error {
+  margin: 10px 0 0;
+  color: #dc2626;
+  font-weight: 700;
+}
+
 .admin-form {
   max-width: 900px;
   margin: 0 auto;
@@ -498,6 +659,32 @@ main {
   resize: vertical;
 }
 
+.textarea-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.textarea-label-row label {
+  margin-bottom: 0;
+}
+
+.admin-form .format-button {
+  min-width: auto;
+  padding: 8px 12px;
+  margin-top: 0;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 700;
+}
+
+.admin-form .format-button:hover {
+  background: #e2e8f0;
+}
+
 .admin-form button {
   display: inline-flex;
   align-items: center;
@@ -510,6 +697,16 @@ main {
 
 .admin-form button + button {
   margin-left: 12px;
+}
+
+.admin-form .cancel-button {
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.admin-form .cancel-button:hover:not(:disabled) {
+  background: #e2e8f0;
 }
 
 .admin-filter-panel {

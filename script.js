@@ -5,7 +5,9 @@ const tagFilter = document.getElementById("tagFilter");
 const modeFilter = document.getElementById("modeFilter");
 const cardList = document.getElementById("cardList");
 const noResults = document.getElementById("noResults");
+const dataStatus = document.getElementById("dataStatus");
 const ADMIN_CARDS_STORAGE_KEY = "adminCards";
+let catalogCards = [];
 
 function normalizeTags(tags) {
   if (Array.isArray(tags)) {
@@ -26,6 +28,44 @@ function getShortDescription(card) {
   return shortBase.length > 50 ? shortBase.substring(0, 50) + "..." : shortBase;
 }
 
+function appendTextWithBreaks(parent, text) {
+  const lines = String(text || "").split("\n");
+  lines.forEach((line, index) => {
+    if (index > 0) {
+      parent.appendChild(document.createElement("br"));
+    }
+    if (!line) return;
+    parent.appendChild(document.createTextNode(line));
+  });
+}
+
+function appendFormattedText(parent, text) {
+  const parts = String(text || "").split("**");
+  parts.forEach((part, index) => {
+    if (!part) return;
+    const isClosedBold = index % 2 === 1 && index < parts.length - 1;
+    if (isClosedBold) {
+      const target = document.createElement("strong");
+      appendTextWithBreaks(target, part);
+      parent.appendChild(target);
+    } else if (index % 2 === 1) {
+      parent.appendChild(document.createTextNode(`**${part}`));
+    } else {
+      appendTextWithBreaks(parent, part);
+    }
+  });
+}
+
+function appendTagPills(parent, values) {
+  parent.textContent = "";
+  values.forEach(value => {
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = value;
+    parent.appendChild(tag);
+  });
+}
+
 function getCardType(card) {
   return card.type || (Array.isArray(card.modes) ? card.modes.join(" / ") : card.modes || "");
 }
@@ -41,6 +81,44 @@ function getCardModes(card) {
   return card.modes ? [card.modes] : [];
 }
 
+function getCardImage(card) {
+  return typeof card.image === "string" ? card.image.trim() : "";
+}
+
+function createImagePlaceholder() {
+  const placeholder = document.createElement("div");
+  placeholder.className = "image-placeholder";
+  placeholder.textContent = "No Image";
+  return placeholder;
+}
+
+function createCardImage(card) {
+  const imageSrc = getCardImage(card);
+  if (!imageSrc) {
+    return createImagePlaceholder();
+  }
+
+  const fragment = document.createDocumentFragment();
+  const image = document.createElement("img");
+  image.className = "card-image";
+  image.src = imageSrc;
+  image.alt = card.name || "";
+  image.loading = "lazy";
+  image.decoding = "async";
+  image.referrerPolicy = "no-referrer";
+
+  const placeholder = createImagePlaceholder();
+  placeholder.style.display = "none";
+  image.addEventListener("error", () => {
+    image.style.display = "none";
+    placeholder.style.display = "flex";
+  });
+
+  fragment.appendChild(image);
+  fragment.appendChild(placeholder);
+  return fragment;
+}
+
 function normalizeCard(card) {
   const text = card.text || card.effectFull || card.effect || "";
   const modes = getCardModes(card);
@@ -54,9 +132,31 @@ function normalizeCard(card) {
     tags: normalizeTags(card.tags),
     keywords: normalizeTags(card.keywords),
     type: card.type || modes.join(" / "),
-    image: card.image || "",
+    image: getCardImage(card),
     modes: modes
   };
+}
+
+function isDisplayableCard(card) {
+  return Boolean(card.id && card.name);
+}
+
+function normalizeCards(cards) {
+  return cards.map(normalizeCard).filter(isDisplayableCard);
+}
+
+function getCatalogSettings() {
+  try {
+    return JSON.parse(localStorage.getItem("settings") || "{}");
+  } catch (error) {
+    console.warn("設定データの読み込みに失敗しました。", error);
+    return {};
+  }
+}
+
+function getSettingValues(key) {
+  const values = getCatalogSettings()[key];
+  return Array.isArray(values) ? values.filter(Boolean) : [];
 }
 
 function getCardsFromLocalStorage() {
@@ -67,22 +167,55 @@ function getCardsFromLocalStorage() {
 
   try {
     const parsedCards = JSON.parse(rawCards);
-    return Array.isArray(parsedCards) ? parsedCards.map(normalizeCard) : [];
+    return Array.isArray(parsedCards) ? normalizeCards(parsedCards) : [];
   } catch (error) {
     console.warn("管理カードデータの読み込みに失敗しました。cards.jsのデータを使用します。", error);
     return [];
   }
 }
 
-function getInitialCards() {
+function getFallbackCards() {
   const localCards = getCardsFromLocalStorage();
-  if (localCards.length > 0) {
-    return localCards;
-  }
-  return Array.isArray(window.cards) ? window.cards.map(normalizeCard) : [];
+  return localCards.length > 0 ? localCards : Array.isArray(window.cards) ? normalizeCards(window.cards) : [];
 }
 
-const catalogCards = getInitialCards();
+async function fetchCardsFromSupabase() {
+  const { supabaseClient } = await import("./supabase.js");
+  const { data, error } = await supabaseClient
+    .from("cards")
+    .select("*")
+    .not("id", "is", null)
+    .neq("id", "")
+    .not("name", "is", null)
+    .neq("name", "")
+    .order("id", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+  return Array.isArray(data) ? normalizeCards(data) : [];
+}
+
+function setDataStatus(message, isError = false) {
+  if (!dataStatus) return;
+  dataStatus.textContent = message;
+  dataStatus.classList.toggle("is-error", isError);
+}
+
+function resetSelectOptions(selectElement) {
+  const firstOption = selectElement.querySelector("option");
+  selectElement.innerHTML = "";
+  if (firstOption) {
+    selectElement.appendChild(firstOption);
+  }
+}
+
+function resetFilters() {
+  resetSelectOptions(categoryFilter);
+  resetSelectOptions(seriesFilter);
+  resetSelectOptions(modeFilter);
+  tagFilter.innerHTML = "";
+}
 
 function displayCards(cardData) {
   cardList.innerHTML = "";
@@ -93,20 +226,25 @@ function displayCards(cardData) {
     cardElement.addEventListener("click", () => showCardDetail(card));
 
     const shortEffect = getShortDescription(card);
-    const imageHtml = card.image
-      ? `<img src="${card.image}" alt="${card.name}" class="card-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"><div class="image-placeholder" style="display:none;">No Image</div>`
-      : `<div class="image-placeholder">No Image</div>`;
     const cardTags = normalizeTags(card.tags);
 
-    cardElement.innerHTML = `
-      ${imageHtml}
-      <h2>${card.name || ""}</h2>
-      <p><strong>カテゴリ:</strong> ${card.category || ""}</p>
-      <p><strong>説明:</strong> ${shortEffect}</p>
-      <div class="tag-list">
-        ${cardTags.map(tag => `<span class="tag">${tag}</span>`).join("")}
-      </div>
-    `;
+    cardElement.appendChild(createCardImage(card));
+    const name = document.createElement("h2");
+    name.textContent = card.name || "";
+    cardElement.appendChild(name);
+
+    const description = document.createElement("p");
+    const descriptionLabel = document.createElement("strong");
+    descriptionLabel.textContent = "説明:";
+    description.appendChild(descriptionLabel);
+    description.appendChild(document.createTextNode(" "));
+    appendFormattedText(description, shortEffect);
+    cardElement.appendChild(description);
+
+    const tagList = document.createElement("div");
+    tagList.className = "tag-list";
+    appendTagPills(tagList, cardTags);
+    cardElement.appendChild(tagList);
 
     cardList.appendChild(cardElement);
   });
@@ -120,7 +258,8 @@ function getUniqueValues(key) {
       return normalizeTags(card.tags);
     }
     if (key === "modeFilter") {
-      return [...(card.series ? [card.series] : []), ...getCardModes(card)];
+      const type = getCardType(card);
+      return [...(type ? [type] : []), ...getCardModes(card)];
     }
     if (key === "type") {
       const type = getCardType(card);
@@ -131,10 +270,8 @@ function getUniqueValues(key) {
   return [...new Set(values)].sort();
 }
 
-function getAllTagValues() {
-  const settings = JSON.parse(localStorage.getItem("settings") || "{}");
-  const settingsTags = Array.isArray(settings.tags) ? settings.tags : [];
-  return [...new Set([...getUniqueValues("tags"), ...settingsTags])].sort();
+function getFilterValues(cardKey, settingKey) {
+  return [...new Set([...getUniqueValues(cardKey), ...getSettingValues(settingKey)])].sort();
 }
 
 function populateFilter(selectElement, values) {
@@ -162,10 +299,11 @@ function populateTagFilter(container, values) {
 }
 
 function initFilters() {
-  populateFilter(categoryFilter, getUniqueValues("category"));
-  populateFilter(seriesFilter, getUniqueValues("series"));
-  populateTagFilter(tagFilter, getAllTagValues());
-  populateFilter(modeFilter, getUniqueValues("modeFilter"));
+  resetFilters();
+  populateFilter(categoryFilter, getFilterValues("category", "categories"));
+  populateFilter(seriesFilter, getFilterValues("series", "seasons"));
+  populateTagFilter(tagFilter, getFilterValues("tags", "tags"));
+  populateFilter(modeFilter, getFilterValues("modeFilter", "types"));
 }
 
 function getSelectedFilterTags() {
@@ -182,6 +320,7 @@ function filterCards() {
   const filteredCards = catalogCards.filter(card => {
     const cardTags = normalizeTags(card.tags);
     const cardModes = getCardModes(card);
+    const cardMode = getCardType(card);
     const searchableText = [
       card.id,
       card.name,
@@ -201,20 +340,12 @@ function filterCards() {
     const matchesCategory = !selectedCategory || card.category === selectedCategory;
     const matchesSeries = !selectedSeries || card.series === selectedSeries;
     const matchesTag = selectedTags.length === 0 || selectedTags.every(tag => cardTags.includes(tag));
-    const matchesMode = !selectedMode || card.series === selectedMode || cardModes.includes(selectedMode);
+    const matchesMode = !selectedMode || cardMode === selectedMode || cardModes.includes(selectedMode);
     return matchesKeyword && matchesCategory && matchesSeries && matchesTag && matchesMode;
   });
 
   displayCards(filteredCards);
 }
-
-searchInput.addEventListener("input", filterCards);
-categoryFilter.addEventListener("change", filterCards);
-seriesFilter.addEventListener("change", filterCards);
-tagFilter.addEventListener("change", filterCards);
-modeFilter.addEventListener("change", filterCards);
-
-initFilters();
 
 function showCardDetail(card) {
   const modal = document.getElementById("cardModal");
@@ -229,9 +360,12 @@ function showCardDetail(card) {
   const modalTags = document.getElementById("modalTags");
   const modalKeywords = document.getElementById("modalKeywords");
 
-  if (card.image) {
-    modalImage.src = card.image;
+  const imageSrc = getCardImage(card);
+  modalImage.onerror = null;
+  if (imageSrc) {
+    modalImage.src = imageSrc;
     modalImage.alt = card.name;
+    modalImage.referrerPolicy = "no-referrer";
     modalImage.style.display = "block";
     modalImagePlaceholder.style.display = "none";
     modalImage.onerror = () => {
@@ -250,9 +384,10 @@ function showCardDetail(card) {
   modalCategory.textContent = card.category || "";
   modalSeries.textContent = card.series || "";
   modalType.textContent = getCardType(card);
-  modalEffect.textContent = getCardText(card);
-  modalTags.innerHTML = normalizeTags(card.tags).map(tag => `<span class="tag">${tag}</span>`).join("");
-  modalKeywords.innerHTML = getCardKeywords(card).map(keyword => `<span class="tag">${keyword}</span>`).join("");
+  modalEffect.textContent = "";
+  appendFormattedText(modalEffect, getCardText(card));
+  appendTagPills(modalTags, normalizeTags(card.tags));
+  appendTagPills(modalKeywords, getCardKeywords(card));
 
   modal.style.display = "block";
 }
@@ -261,4 +396,34 @@ function closeModal() {
   document.getElementById("cardModal").style.display = "none";
 }
 
-displayCards(catalogCards);
+async function loadCatalogCards() {
+  setDataStatus("カードデータを読み込み中...");
+  noResults.hidden = true;
+  cardList.innerHTML = "";
+
+  try {
+    catalogCards = await fetchCardsFromSupabase();
+    setDataStatus("");
+  } catch (error) {
+    console.warn("Supabaseからカードデータを読み込めませんでした。", error);
+    catalogCards = getFallbackCards();
+    setDataStatus("Supabaseから読み込めなかったため、予備データを表示しています", true);
+  }
+
+  initFilters();
+  displayCards(catalogCards);
+}
+
+searchInput.addEventListener("input", filterCards);
+categoryFilter.addEventListener("change", filterCards);
+seriesFilter.addEventListener("change", filterCards);
+tagFilter.addEventListener("change", filterCards);
+modeFilter.addEventListener("change", filterCards);
+
+window.addEventListener("storage", event => {
+  if (event.key !== "settings") return;
+  initFilters();
+  filterCards();
+});
+
+loadCatalogCards();

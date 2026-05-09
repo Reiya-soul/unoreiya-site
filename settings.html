@@ -12,15 +12,15 @@
       <div>
         <h1>UNOREIYA 選択肢管理</h1>
         <p>カード登録で使う選択肢を管理します。</p>
+        <nav class="page-nav" aria-label="管理ページ切り替え">
+          <a href="admin.html">カード管理</a>
+          <a href="settings.html" class="active" aria-current="page">選択肢管理</a>
+        </nav>
       </div>
     </div>
   </header>
 
   <main>
-    <nav>
-      <a href="admin.html">カード管理に戻る</a>
-    </nav>
-
     <section id="seasonsSection" class="settings-section">
       <h2>シーズン</h2>
       <div class="settings-form">
@@ -42,9 +42,9 @@
     </section>
 
     <section id="typesSection" class="settings-section">
-      <h2>タイプ</h2>
+      <h2>モード</h2>
       <div class="settings-form">
-        <input type="text" id="typeInput" placeholder="新しいタイプを入力">
+        <input type="text" id="typeInput" placeholder="新しいモードを入力">
         <button type="button" id="addTypeBtn">追加</button>
         <button type="button" id="updateTypeBtn" style="display:none;">更新</button>
       </div>
