@@ -101,12 +101,24 @@
 
         <div class="form-row form-row--two">
           <div class="field-group field-group--wide">
-            <label for="image">画像URL</label>
+            <label for="image">画像ファイル名 / 画像パス</label>
             <input type="text" id="image" placeholder="例: images/sp001.png (空でもOK)">
           </div>
-          <div class="field-group field-group--small">
-            <label for="viewImage">画像を見る</label>
-            <input type="text" id="viewImage" placeholder="例: Yes / No">
+          <div class="field-group field-group--wide">
+            <label for="imageFile">画像ファイルを選択</label>
+            <input type="file" id="imageFile" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+            <button type="button" id="uploadImageBtn" class="secondary-button">Supabaseに画像をアップロード</button>
+            <p id="uploadImageStatus" class="upload-status"></p>
+          </div>
+        </div>
+
+        <div class="form-row form-row--full">
+          <div class="field-group full-width">
+            <label>画像プレビュー</label>
+            <div class="admin-image-preview">
+              <img id="imagePreview" src="" alt="画像プレビュー">
+              <div id="imagePreviewPlaceholder" class="image-placeholder">No Image</div>
+            </div>
           </div>
         </div>
       </div>

@@ -5,6 +5,7 @@ const tagFilter = document.getElementById("tagFilter");
 const modeFilter = document.getElementById("modeFilter");
 const cardList = document.getElementById("cardList");
 const noResults = document.getElementById("noResults");
+const ADMIN_CARDS_STORAGE_KEY = "adminCards";
 
 function normalizeTags(tags) {
   if (Array.isArray(tags)) {
@@ -40,6 +41,49 @@ function getCardModes(card) {
   return card.modes ? [card.modes] : [];
 }
 
+function normalizeCard(card) {
+  const text = card.text || card.effectFull || card.effect || "";
+  const modes = getCardModes(card);
+  return {
+    id: card.id || "",
+    name: card.name || "",
+    text: text,
+    effectShort: card.effectShort || "",
+    series: card.series || "",
+    category: card.category || "",
+    tags: normalizeTags(card.tags),
+    keywords: normalizeTags(card.keywords),
+    type: card.type || modes.join(" / "),
+    image: card.image || "",
+    modes: modes
+  };
+}
+
+function getCardsFromLocalStorage() {
+  const rawCards = localStorage.getItem(ADMIN_CARDS_STORAGE_KEY);
+  if (!rawCards) {
+    return [];
+  }
+
+  try {
+    const parsedCards = JSON.parse(rawCards);
+    return Array.isArray(parsedCards) ? parsedCards.map(normalizeCard) : [];
+  } catch (error) {
+    console.warn("管理カードデータの読み込みに失敗しました。cards.jsのデータを使用します。", error);
+    return [];
+  }
+}
+
+function getInitialCards() {
+  const localCards = getCardsFromLocalStorage();
+  if (localCards.length > 0) {
+    return localCards;
+  }
+  return Array.isArray(window.cards) ? window.cards.map(normalizeCard) : [];
+}
+
+const catalogCards = getInitialCards();
+
 function displayCards(cardData) {
   cardList.innerHTML = "";
 
@@ -71,7 +115,7 @@ function displayCards(cardData) {
 }
 
 function getUniqueValues(key) {
-  const values = window.cards.flatMap(card => {
+  const values = catalogCards.flatMap(card => {
     if (key === "tags") {
       return normalizeTags(card.tags);
     }
@@ -135,7 +179,7 @@ function filterCards() {
   const selectedTags = getSelectedFilterTags();
   const selectedMode = modeFilter.value;
 
-  const filteredCards = window.cards.filter(card => {
+  const filteredCards = catalogCards.filter(card => {
     const cardTags = normalizeTags(card.tags);
     const cardModes = getCardModes(card);
     const searchableText = [
@@ -217,4 +261,4 @@ function closeModal() {
   document.getElementById("cardModal").style.display = "none";
 }
 
-displayCards(window.cards);
+displayCards(catalogCards);

@@ -1,5 +1,8 @@
 let editingIndex = -1;
 let adminCards = [];
+let imagePreviewObjectUrl = '';
+const supportedImageExtensions = ['png', 'jpg', 'jpeg', 'webp'];
+const CARD_IMAGE_BUCKET = 'card-images';
 
 function loadSettings() {
   const settings = JSON.parse(localStorage.getItem('settings') || '{}');
@@ -56,6 +59,186 @@ function normalizeTags(tags) {
     return tags.split(',').map(t => t.trim()).filter(t => t);
   }
   return [];
+}
+
+function buildImagePathFromFileName(fileName) {
+  return fileName ? `images/${fileName}` : '';
+}
+
+function getFileExtension(fileName) {
+  const extension = fileName.split('.').pop();
+  return extension ? extension.toLowerCase() : '';
+}
+
+function isSupportedImageFileName(fileName) {
+  return supportedImageExtensions.includes(getFileExtension(fileName));
+}
+
+function getSelectedImageFile() {
+  const imageFileInput = document.getElementById('imageFile');
+  return imageFileInput?.files?.[0] || null;
+}
+
+function getSupabaseImageFileName(cardId, fileName) {
+  const extension = getFileExtension(fileName);
+  const safeId = cardId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  return safeId && extension ? `${safeId}.${extension}` : '';
+}
+
+function setUploadImageStatus(message, isError = false) {
+  const status = document.getElementById('uploadImageStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', isError);
+}
+
+function isDuplicateStorageError(error) {
+  const message = `${error?.message || ''} ${error?.error || ''}`.toLowerCase();
+  return error?.statusCode === '409' || error?.status === 409 || message.includes('already exists') || message.includes('duplicate');
+}
+
+async function getSupabaseClient() {
+  const { supabaseClient } = await import('./supabase.js');
+  return supabaseClient;
+}
+
+function clearImagePreviewObjectUrl() {
+  if (imagePreviewObjectUrl) {
+    URL.revokeObjectURL(imagePreviewObjectUrl);
+    imagePreviewObjectUrl = '';
+  }
+}
+
+function updateImagePreview(src) {
+  const preview = document.getElementById('imagePreview');
+  const placeholder = document.getElementById('imagePreviewPlaceholder');
+  if (!preview || !placeholder) return;
+
+  clearImagePreviewObjectUrl();
+  if (!src) {
+    preview.src = '';
+    preview.style.display = 'none';
+    placeholder.style.display = 'flex';
+    return;
+  }
+
+  preview.src = src;
+  preview.style.display = 'block';
+  placeholder.style.display = 'none';
+  preview.onerror = () => {
+    preview.style.display = 'none';
+    placeholder.style.display = 'flex';
+  };
+}
+
+function updateImagePreviewFromPath() {
+  const imagePath = document.getElementById('image')?.value.trim() || '';
+  updateImagePreview(imagePath);
+}
+
+function handleImageFileChange(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  if (!isSupportedImageFileName(file.name)) {
+    alert('画像は png / jpg / jpeg / webp のいずれかを選択してください。');
+    event.target.value = '';
+    return;
+  }
+
+  const imageInput = document.getElementById('image');
+  imageInput.value = buildImagePathFromFileName(file.name);
+
+  clearImagePreviewObjectUrl();
+  imagePreviewObjectUrl = URL.createObjectURL(file);
+  const preview = document.getElementById('imagePreview');
+  const placeholder = document.getElementById('imagePreviewPlaceholder');
+  if (!preview || !placeholder) return;
+
+  preview.src = imagePreviewObjectUrl;
+  preview.style.display = 'block';
+  placeholder.style.display = 'none';
+  setUploadImageStatus('');
+}
+
+async function uploadSelectedImageToSupabase() {
+  const file = getSelectedImageFile();
+  const cardId = document.getElementById('id').value.trim();
+
+  if (!cardId) {
+    alert('画像をアップロードする前にカードIDを入力してください。');
+    return;
+  }
+  if (!file) {
+    alert('アップロードする画像ファイルを選択してください。');
+    return;
+  }
+  if (!isSupportedImageFileName(file.name)) {
+    alert('画像は png / jpg / jpeg / webp のいずれかを選択してください。');
+    return;
+  }
+
+  const storageFileName = getSupabaseImageFileName(cardId, file.name);
+  if (!storageFileName) {
+    alert('カードIDまたは画像ファイル名を確認してください。');
+    return;
+  }
+
+  const uploadButton = document.getElementById('uploadImageBtn');
+  uploadButton.disabled = true;
+  setUploadImageStatus('アップロード中...');
+
+  let supabaseClient;
+  try {
+    supabaseClient = await getSupabaseClient();
+  } catch (error) {
+    uploadButton.disabled = false;
+    setUploadImageStatus('Supabaseを読み込めませんでした。', true);
+    alert(`Supabaseを読み込めませんでした: ${error.message}`);
+    return;
+  }
+
+  let uploadResult;
+  try {
+    uploadResult = await supabaseClient.storage
+      .from(CARD_IMAGE_BUCKET)
+      .upload(storageFileName, file, {
+        cacheControl: '3600',
+        contentType: file.type || undefined
+      });
+  } catch (error) {
+    uploadButton.disabled = false;
+    const message = isDuplicateStorageError(error) ? '同じファイル名が存在します。' : 'アップロードに失敗しました。';
+    setUploadImageStatus(message, true);
+    alert(`${message}${error.message ? `\n${error.message}` : ''}`);
+    return;
+  }
+
+  const uploadError = uploadResult.error;
+  if (uploadError) {
+    uploadButton.disabled = false;
+    const message = isDuplicateStorageError(uploadError) ? '同じファイル名が存在します。' : 'アップロードに失敗しました。';
+    setUploadImageStatus(message, true);
+    alert(`${message}${uploadError.message ? `\n${uploadError.message}` : ''}`);
+    return;
+  }
+
+  const { data } = supabaseClient.storage
+    .from(CARD_IMAGE_BUCKET)
+    .getPublicUrl(storageFileName);
+  const publicUrl = data?.publicUrl || '';
+
+  if (!publicUrl) {
+    uploadButton.disabled = false;
+    setUploadImageStatus('公開URLを取得できませんでした。', true);
+    alert('公開URLを取得できませんでした。');
+    return;
+  }
+
+  document.getElementById('image').value = publicUrl;
+  updateImagePreview(publicUrl);
+  setUploadImageStatus('アップロード完了');
+  uploadButton.disabled = false;
 }
 
 function getShortText(text) {
@@ -306,11 +489,14 @@ function populateForm(card) {
   document.getElementById('keywords').value = normalizeTags(card.keywords).join(', ');
   document.getElementById('type').value = card.type;
   document.getElementById('image').value = card.image;
+  document.getElementById('imageFile').value = '';
+  updateImagePreviewFromPath();
 }
 
 function clearForm() {
   document.getElementById('cardForm').reset();
   setSelectedTags([]);
+  updateImagePreview('');
 }
 
 function exportCardsData() {
@@ -414,5 +600,14 @@ document.getElementById('filterCategory').addEventListener('change', applyFilter
 document.getElementById('filterSeries').addEventListener('change', applyFilters);
 
 document.getElementById('filterType').addEventListener('change', applyFilters);
+
+document.getElementById('imageFile').addEventListener('change', handleImageFileChange);
+
+document.getElementById('image').addEventListener('input', updateImagePreviewFromPath);
+
+document.getElementById('uploadImageBtn').addEventListener('click', uploadSelectedImageToSupabase);
+
+window.editCard = editCard;
+window.deleteCard = deleteCard;
 
 window.addEventListener('load', loadCards);
