@@ -6,6 +6,33 @@ let imagePreviewObjectUrl = '';
 const supportedImageExtensions = ['png', 'jpg', 'jpeg', 'webp'];
 const CARD_IMAGE_BUCKET = 'card-images';
 let adminCardsLoaded = false;
+const fallbackCardOptions = {
+  seasons: ['Original', 'Special', 'Stock制', 'UNO Flip', 'High Class', 'その他'],
+  categories: ['キャラクターカード', 'SPカード', 'フィールドカード', 'ボスカード', 'High Class', 'その他'],
+  types: ['攻撃', '防御', '妨害', 'サポート', 'ドロー', '交換', '特殊', 'その他'],
+  modes: ['Original', 'Special', 'Stock制', 'UNO Flip', 'High Class', 'その他'],
+  tags: ['妨害', 'ドロー', '手札交換', '山札操作', '捨て札操作', 'ターンスキップ', 'ボス', 'フィールド', '状態異常', 'SP', '強カード', 'その他']
+};
+const cardOptionKinds = {
+  seasons: 'series',
+  categories: 'category',
+  types: 'type',
+  modes: 'mode',
+  tags: 'tag'
+};
+const cardOptionKindAliases = {
+  season: 'series',
+  seasons: 'series',
+  series: 'series',
+  category: 'category',
+  categories: 'category',
+  type: 'type',
+  types: 'type',
+  mode: 'mode',
+  modes: 'mode',
+  tag: 'tag',
+  tags: 'tag'
+};
 
 function isAdminAuthenticated() {
   return sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY) === 'true';
@@ -51,33 +78,20 @@ function initializeAdminAuth() {
   }
 }
 
-function loadSettings() {
-  const settings = JSON.parse(localStorage.getItem('settings') || '{}');
-  const defaultSettings = {
-    seasons: ['Original', 'Special', 'Stock制', 'UNO Flip', 'High Class', 'その他'],
-    categories: ['キャラクターカード', 'SPカード', 'フィールドカード', 'ボスカード', 'High Class', 'その他'],
-    types: ['攻撃', '防御', '妨害', 'サポート', 'ドロー', '交換', '特殊', 'その他'],
-    tags: ['妨害', 'ドロー', '手札交換', '山札操作', '捨て札操作', 'ターンスキップ', 'ボス', 'フィールド', '状態異常', 'SP', '強カード', 'その他']
-  };
-  if (!settings.seasons || settings.seasons.length === 0) {
-    settings.seasons = [...defaultSettings.seasons];
-  }
-  if (!settings.categories || settings.categories.length === 0) {
-    settings.categories = [...defaultSettings.categories];
-  }
-  if (!settings.types || settings.types.length === 0) {
-    settings.types = [...defaultSettings.types];
-  }
-  if (!settings.tags || settings.tags.length === 0) {
-    settings.tags = [...defaultSettings.tags];
-  }
-  localStorage.setItem('settings', JSON.stringify(settings));
-  return settings;
-}
-
 function populateSelect(selectId, options) {
   const select = document.getElementById(selectId);
   select.innerHTML = '<option value="">選択してください</option>';
+  options.forEach(option => {
+    const opt = document.createElement('option');
+    opt.value = option;
+    opt.textContent = option;
+    select.appendChild(opt);
+  });
+}
+
+function populateFilterSelect(selectId, options) {
+  const select = document.getElementById(selectId);
+  select.innerHTML = '<option value="">すべて</option>';
   options.forEach(option => {
     const opt = document.createElement('option');
     opt.value = option;
@@ -100,12 +114,51 @@ function renderTagSelect(selectId, tags) {
 
 function normalizeTags(tags) {
   if (Array.isArray(tags)) {
-    return tags.filter(Boolean);
+    return tags.map(tag => String(tag).trim()).filter(Boolean);
   }
   if (typeof tags === 'string') {
     return tags.split(',').map(t => t.trim()).filter(t => t);
   }
   return [];
+}
+
+function groupOptionRows(rows) {
+  const normalizedRows = rows
+    .map(option => ({
+      ...option,
+      kind: cardOptionKindAliases[String(option.kind || '').trim().toLowerCase()] || '',
+      name: String(option.name || '').trim()
+    }))
+    .filter(option => option.kind && option.name);
+
+  return Object.fromEntries(
+    Object.entries(cardOptionKinds).map(([key, kind]) => [
+      key,
+      normalizedRows
+        .filter(option => option.kind === kind)
+        .map(option => option.name)
+    ])
+  );
+}
+
+async function loadCardOptions() {
+  try {
+    const supabaseClient = await getSupabaseClient();
+    const { data, error } = await supabaseClient
+      .from('card_options')
+      .select('kind, name, sort_order')
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true });
+    if (error) throw error;
+    console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
+    const options = groupOptionRows(data || []);
+    return Object.fromEntries(
+      Object.keys(fallbackCardOptions).map(key => [key, options[key]?.length ? options[key] : []])
+    );
+  } catch (error) {
+    console.warn('Supabaseから選択肢を読み込めませんでした。固定選択肢を使います。', error);
+    return { ...fallbackCardOptions };
+  }
 }
 
 function getFileExtension(fileName) {
@@ -125,7 +178,7 @@ function getSelectedImageFile() {
 function getSupabaseImageFileName(cardId, fileName) {
   const extension = getFileExtension(fileName);
   const safeId = cardId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
-  return safeId && extension ? `${safeId}.${extension}` : '';
+  return safeId && extension ? `${safeId}-${Date.now()}.${extension}` : '';
 }
 
 function setUploadImageStatus(message, isError = false) {
@@ -145,12 +198,6 @@ async function getSupabaseClient() {
   return supabaseClient;
 }
 
-function addCacheBuster(url) {
-  if (!url) return '';
-  const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}v=${Date.now()}`;
-}
-
 async function uploadImageFile(supabaseClient, storageFileName, file, options = {}) {
   return supabaseClient.storage
     .from(CARD_IMAGE_BUCKET)
@@ -161,7 +208,7 @@ async function uploadImageFileWithOverwrite(supabaseClient, storageFileName, fil
   const uploadOptions = {
     cacheControl: '3600',
     contentType: file.type || undefined,
-    upsert: true
+    upsert: false
   };
 
   let uploadResult = await uploadImageFile(supabaseClient, storageFileName, file, uploadOptions);
@@ -344,7 +391,7 @@ async function uploadSelectedImageForCard(cardId, file) {
   const { data } = supabaseClient.storage
     .from(CARD_IMAGE_BUCKET)
     .getPublicUrl(storageFileName);
-  const publicUrl = addCacheBuster(data?.publicUrl || '');
+  const publicUrl = data?.publicUrl || '';
 
   if (!publicUrl) {
     setUploadImageStatus('公開URLを取得できませんでした。', true);
@@ -493,13 +540,16 @@ function addSelectedTag(tag) {
   selectedTagsDiv.appendChild(tagDiv);
 }
 
-function loadCards() {
+async function loadCards() {
   adminCards = JSON.parse(localStorage.getItem('adminCards') || '[]').map(normalizeCard);
-  const settings = loadSettings();
-  populateSelect('series', settings.seasons);
-  populateSelect('category', settings.categories);
-  populateSelect('type', settings.types);
-  renderTagSelect('tagSelect', settings.tags);
+  const options = await loadCardOptions();
+  populateSelect('series', options.seasons);
+  populateSelect('category', options.categories);
+  populateSelect('type', options.types);
+  populateFilterSelect('filterCategory', options.categories);
+  populateFilterSelect('filterSeries', options.seasons);
+  populateFilterSelect('filterType', [...new Set([...options.types, ...options.modes])]);
+  renderTagSelect('tagSelect', options.tags);
   setSelectedTags([]);
   applyFilters();
 
@@ -641,18 +691,8 @@ function renderCardList(cards) {
     const originalIndex = adminCards.findIndex(existing => existing.id === card.id);
     const cardDiv = document.createElement('div');
     cardDiv.className = 'card-item';
-    const categoryText = card.category || 'なし';
-    const seriesText = card.series || 'なし';
-    const typeText = card.type || 'なし';
-    const cardTags = Array.isArray(card.tags) ? card.tags : typeof card.tags === 'string' ? card.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
-    const tagsText = cardTags.length > 0 ? cardTags.join(', ') : 'なし';
     cardDiv.appendChild(createCardListParagraph('ID', card.id));
     cardDiv.appendChild(createCardListParagraph('名前', card.name));
-    cardDiv.appendChild(createCardListParagraph('テキスト', card.text || card.effectShort || '', true));
-    cardDiv.appendChild(createCardListParagraph('カテゴリ', categoryText));
-    cardDiv.appendChild(createCardListParagraph('シーズン', seriesText));
-    cardDiv.appendChild(createCardListParagraph('モード', typeText));
-    cardDiv.appendChild(createCardListParagraph('タグ', tagsText));
 
     const editButton = document.createElement('button');
     editButton.type = 'button';

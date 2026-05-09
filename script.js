@@ -6,12 +6,45 @@ const modeFilter = document.getElementById("modeFilter");
 const cardList = document.getElementById("cardList");
 const noResults = document.getElementById("noResults");
 const dataStatus = document.getElementById("dataStatus");
-const ADMIN_CARDS_STORAGE_KEY = "adminCards";
 let catalogCards = [];
+let catalogOptions = {
+  categories: [],
+  seasons: [],
+  types: [],
+  modes: [],
+  tags: []
+};
+const fallbackCardOptions = {
+  categories: ['キャラクターカード', 'SPカード', 'フィールドカード', 'ボスカード', 'High Class', 'その他'],
+  seasons: ['Original', 'Special', 'Stock制', 'UNO Flip', 'High Class', 'その他'],
+  types: ['攻撃', '防御', '妨害', 'サポート', 'ドロー', '交換', '特殊', 'その他'],
+  modes: ['Original', 'Special', 'Stock制', 'UNO Flip', 'High Class', 'その他'],
+  tags: ['妨害', 'ドロー', '手札交換', '山札操作', '捨て札操作', 'ターンスキップ', 'ボス', 'フィールド', '状態異常', 'SP', '強カード', 'その他']
+};
+const cardOptionKinds = {
+  categories: 'category',
+  seasons: 'series',
+  types: 'type',
+  modes: 'mode',
+  tags: 'tag'
+};
+const cardOptionKindAliases = {
+  season: 'series',
+  seasons: 'series',
+  series: 'series',
+  category: 'category',
+  categories: 'category',
+  type: 'type',
+  types: 'type',
+  mode: 'mode',
+  modes: 'mode',
+  tag: 'tag',
+  tags: 'tag'
+};
 
 function normalizeTags(tags) {
   if (Array.isArray(tags)) {
-    return tags.filter(Boolean);
+    return tags.map(tag => String(tag).trim()).filter(Boolean);
   }
   if (typeof tags === "string") {
     return tags.split(",").map(tag => tag.trim()).filter(Boolean);
@@ -145,38 +178,54 @@ function normalizeCards(cards) {
   return cards.map(normalizeCard).filter(isDisplayableCard);
 }
 
-function getCatalogSettings() {
-  try {
-    return JSON.parse(localStorage.getItem("settings") || "{}");
-  } catch (error) {
-    console.warn("設定データの読み込みに失敗しました。", error);
-    return {};
-  }
-}
-
-function getSettingValues(key) {
-  const values = getCatalogSettings()[key];
-  return Array.isArray(values) ? values.filter(Boolean) : [];
-}
-
-function getCardsFromLocalStorage() {
-  const rawCards = localStorage.getItem(ADMIN_CARDS_STORAGE_KEY);
-  if (!rawCards) {
-    return [];
-  }
-
-  try {
-    const parsedCards = JSON.parse(rawCards);
-    return Array.isArray(parsedCards) ? normalizeCards(parsedCards) : [];
-  } catch (error) {
-    console.warn("管理カードデータの読み込みに失敗しました。cards.jsのデータを使用します。", error);
-    return [];
-  }
-}
-
 function getFallbackCards() {
-  const localCards = getCardsFromLocalStorage();
-  return localCards.length > 0 ? localCards : Array.isArray(window.cards) ? normalizeCards(window.cards) : [];
+  return Array.isArray(window.cards) ? normalizeCards(window.cards) : [];
+}
+
+function groupOptionRows(rows) {
+  const normalizedRows = rows
+    .map(option => ({
+      ...option,
+      kind: cardOptionKindAliases[String(option.kind || '').trim().toLowerCase()] || '',
+      name: String(option.name || '').trim()
+    }))
+    .filter(option => option.kind && option.name);
+
+  return Object.fromEntries(
+    Object.entries(cardOptionKinds).map(([key, kind]) => [
+      key,
+      normalizedRows
+        .filter(option => option.kind === kind)
+        .map(option => option.name)
+    ])
+  );
+}
+
+async function fetchCardOptionsFromSupabase() {
+  const { supabaseClient } = await import("./supabase.js");
+  const { data, error } = await supabaseClient
+    .from("card_options")
+    .select("kind, name, sort_order")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+  console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
+  return groupOptionRows(data || []);
+}
+
+async function loadCatalogOptions() {
+  try {
+    const options = await fetchCardOptionsFromSupabase();
+    catalogOptions = Object.fromEntries(
+      Object.keys(fallbackCardOptions).map(key => [key, options[key]?.length ? options[key] : []])
+    );
+  } catch (error) {
+    console.warn("Supabaseから選択肢を読み込めませんでした。固定選択肢を使用します。", error);
+    catalogOptions = { ...fallbackCardOptions };
+  }
 }
 
 async function fetchCardsFromSupabase() {
@@ -252,26 +301,8 @@ function displayCards(cardData) {
   noResults.hidden = cardData.length > 0;
 }
 
-function getUniqueValues(key) {
-  const values = catalogCards.flatMap(card => {
-    if (key === "tags") {
-      return normalizeTags(card.tags);
-    }
-    if (key === "modeFilter") {
-      const type = getCardType(card);
-      return [...(type ? [type] : []), ...getCardModes(card)];
-    }
-    if (key === "type") {
-      const type = getCardType(card);
-      return type ? [type] : [];
-    }
-    return card[key] ? [card[key]] : [];
-  });
-  return [...new Set(values)].sort();
-}
-
-function getFilterValues(cardKey, settingKey) {
-  return [...new Set([...getUniqueValues(cardKey), ...getSettingValues(settingKey)])].sort();
+function getOptionValues(key) {
+  return [...new Set(catalogOptions[key] || [])].sort();
 }
 
 function populateFilter(selectElement, values) {
@@ -300,10 +331,10 @@ function populateTagFilter(container, values) {
 
 function initFilters() {
   resetFilters();
-  populateFilter(categoryFilter, getFilterValues("category", "categories"));
-  populateFilter(seriesFilter, getFilterValues("series", "seasons"));
-  populateTagFilter(tagFilter, getFilterValues("tags", "tags"));
-  populateFilter(modeFilter, getFilterValues("modeFilter", "types"));
+  populateFilter(categoryFilter, getOptionValues("categories"));
+  populateFilter(seriesFilter, getOptionValues("seasons"));
+  populateTagFilter(tagFilter, getOptionValues("tags"));
+  populateFilter(modeFilter, getOptionValues("modes"));
 }
 
 function getSelectedFilterTags() {
@@ -402,10 +433,12 @@ async function loadCatalogCards() {
   cardList.innerHTML = "";
 
   try {
+    await loadCatalogOptions();
     catalogCards = await fetchCardsFromSupabase();
     setDataStatus("");
   } catch (error) {
     console.warn("Supabaseからカードデータを読み込めませんでした。", error);
+    await loadCatalogOptions();
     catalogCards = getFallbackCards();
     setDataStatus("Supabaseから読み込めなかったため、予備データを表示しています", true);
   }
@@ -419,11 +452,5 @@ categoryFilter.addEventListener("change", filterCards);
 seriesFilter.addEventListener("change", filterCards);
 tagFilter.addEventListener("change", filterCards);
 modeFilter.addEventListener("change", filterCards);
-
-window.addEventListener("storage", event => {
-  if (event.key !== "settings") return;
-  initFilters();
-  filterCards();
-});
 
 loadCatalogCards();
