@@ -53,6 +53,31 @@ function getSupabaseClient() {
   throw new Error('Supabaseを読み込めませんでした。');
 }
 
+function getSupabaseRestUrl(path) {
+  if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
+    throw new Error("Supabase設定を読み込めませんでした。");
+  }
+  return `${window.SUPABASE_URL}/rest/v1/${path}`;
+}
+
+function getSupabaseRestHeaders(extraHeaders = {}) {
+  return {
+    apikey: window.SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${window.SUPABASE_ANON_KEY}`,
+    ...extraHeaders
+  };
+}
+
+async function fetchSupabaseRows(path) {
+  const response = await fetch(getSupabaseRestUrl(path), {
+    headers: getSupabaseRestHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  return response.json();
+}
+
 function normalizeTags(tags) {
   if (Array.isArray(tags)) {
     return tags.map(tag => String(tag).trim()).filter(Boolean);
@@ -257,18 +282,23 @@ function groupOptionRows(rows) {
 }
 
 async function fetchCardOptionsFromSupabase() {
-  const supabaseClient = getSupabaseClient();
-  const { data, error } = await supabaseClient
-    .from("card_options")
-    .select("kind, name, sort_order")
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true });
+  try {
+    const supabaseClient = getSupabaseClient();
+    const { data, error } = await supabaseClient
+      .from("card_options")
+      .select("kind, name, sort_order")
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
 
-  if (error) {
-    throw error;
+    if (error) throw error;
+    console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
+    return groupOptionRows(data || []);
+  } catch (error) {
+    console.warn("Supabase JS clientで選択肢を読めませんでした。RESTで再試行します。", error);
+    const data = await fetchSupabaseRows("card_options?select=kind,name,sort_order&order=sort_order.asc&order=name.asc");
+    console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
+    return groupOptionRows(data || []);
   }
-  console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
-  return groupOptionRows(data || []);
 }
 
 async function loadCatalogOptions() {
@@ -294,20 +324,24 @@ async function loadCatalogOptions() {
 }
 
 async function fetchCardsFromSupabase() {
-  const supabaseClient = getSupabaseClient();
-  const { data, error } = await supabaseClient
-    .from("cards")
-    .select("*")
-    .not("id", "is", null)
-    .neq("id", "")
-    .not("name", "is", null)
-    .neq("name", "")
-    .order("id", { ascending: true });
+  try {
+    const supabaseClient = getSupabaseClient();
+    const { data, error } = await supabaseClient
+      .from("cards")
+      .select("*")
+      .not("id", "is", null)
+      .neq("id", "")
+      .not("name", "is", null)
+      .neq("name", "")
+      .order("id", { ascending: true });
 
-  if (error) {
-    throw error;
+    if (error) throw error;
+    return Array.isArray(data) ? normalizeCards(data) : [];
+  } catch (error) {
+    console.warn("Supabase JS clientでカードを読めませんでした。RESTで再試行します。", error);
+    const data = await fetchSupabaseRows("cards?select=*&id=not.is.null&id=neq.&name=not.is.null&name=neq.&order=id.asc");
+    return Array.isArray(data) ? normalizeCards(data) : [];
   }
-  return Array.isArray(data) ? normalizeCards(data) : [];
 }
 
 function setDataStatus(message, isError = false) {
@@ -339,26 +373,10 @@ function displayCards(cardData) {
     cardElement.className = "card";
     cardElement.addEventListener("click", () => showCardDetail(card));
 
-    const shortEffect = getShortDescription(card);
-    const cardTags = normalizeTags(card.tags);
-
     cardElement.appendChild(createCardImage(card));
     const name = document.createElement("h2");
     name.textContent = card.name || "";
     cardElement.appendChild(name);
-
-    const description = document.createElement("p");
-    const descriptionLabel = document.createElement("strong");
-    descriptionLabel.textContent = "隱ｬ譏・";
-    description.appendChild(descriptionLabel);
-    description.appendChild(document.createTextNode(" "));
-    appendFormattedText(description, shortEffect);
-    cardElement.appendChild(description);
-
-    const tagList = document.createElement("div");
-    tagList.className = "tag-list";
-    appendTagPills(tagList, cardTags);
-    cardElement.appendChild(tagList);
 
     cardList.appendChild(cardElement);
   });

@@ -270,6 +270,58 @@ function getSupabaseClient() {
   throw new Error('Supabaseを読み込めませんでした。');
 }
 
+function getSupabaseRestUrl(path) {
+  if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
+    throw new Error('Supabase設定を読み込めませんでした。');
+  }
+  return `${window.SUPABASE_URL}/rest/v1/${path}`;
+}
+
+function getSupabaseRestHeaders(extraHeaders = {}) {
+  return {
+    apikey: window.SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${window.SUPABASE_ANON_KEY}`,
+    ...extraHeaders
+  };
+}
+
+async function fetchSupabaseRows(path) {
+  const response = await fetch(getSupabaseRestUrl(path), {
+    headers: getSupabaseRestHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  return response.json();
+}
+
+async function upsertSupabaseRow(table, payload, conflictColumn = 'id') {
+  const response = await fetch(getSupabaseRestUrl(`${table}?on_conflict=${encodeURIComponent(conflictColumn)}`), {
+    method: 'POST',
+    headers: getSupabaseRestHeaders({
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=representation'
+    }),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  return response.json();
+}
+
+async function deleteSupabaseRow(table, column, value) {
+  const response = await fetch(getSupabaseRestUrl(`${table}?${encodeURIComponent(column)}=eq.${encodeURIComponent(value)}`), {
+    method: 'DELETE',
+    headers: getSupabaseRestHeaders({
+      Prefer: 'return=minimal'
+    })
+  });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+}
+
 async function uploadImageFile(supabaseClient, storageFileName, file, options = {}) {
   return supabaseClient.storage
     .from(CARD_IMAGE_BUCKET)
@@ -333,28 +385,48 @@ function toSupabaseCardMinimal(card) {
 }
 
 async function fetchCardsFromSupabase() {
-  const supabaseClient = await getSupabaseClient();
-  const { data, error } = await supabaseClient
-    .from('cards')
-    .select('*')
-    .not('id', 'is', null)
-    .neq('id', '')
-    .not('name', 'is', null)
-    .neq('name', '')
-    .order('id', { ascending: true });
+  try {
+    const supabaseClient = await getSupabaseClient();
+    const { data, error } = await supabaseClient
+      .from('cards')
+      .select('*')
+      .not('id', 'is', null)
+      .neq('id', '')
+      .not('name', 'is', null)
+      .neq('name', '')
+      .order('id', { ascending: true });
 
-  if (error) {
-    throw error;
+    if (error) throw error;
+    return applyLocalDeletedCards(Array.isArray(data) ? data.map(normalizeCard) : []);
+  } catch (error) {
+    console.warn('Supabase JS clientでカードを読めませんでした。RESTで再試行します。', error);
+    const data = await fetchSupabaseRows('cards?select=*&id=not.is.null&id=neq.&name=not.is.null&name=neq.&order=id.asc');
+    return applyLocalDeletedCards(Array.isArray(data) ? data.map(normalizeCard) : []);
   }
-
-  return applyLocalDeletedCards(Array.isArray(data) ? data.map(normalizeCard) : []);
 }
 
 async function saveCardToSupabase(card) {
-  const supabaseClient = await getSupabaseClient();
-  const result = await supabaseClient
-    .from('cards')
-    .upsert(toSupabaseCard(card), { onConflict: 'id' });
+  let result;
+  try {
+    const supabaseClient = await getSupabaseClient();
+    result = await supabaseClient
+      .from('cards')
+      .upsert(toSupabaseCard(card), { onConflict: 'id' });
+  } catch (error) {
+    console.warn('Supabase JS clientでカード保存できませんでした。RESTで再試行します。', error);
+    try {
+      await upsertSupabaseRow('cards', toSupabaseCard(card));
+    } catch (restError) {
+      if (!isMissingColumnError(restError, 'effectShort')) throw restError;
+      try {
+        await upsertSupabaseRow('cards', toSupabaseCardWithSnakeCase(card));
+      } catch (snakeError) {
+        if (!isMissingColumnError(snakeError, 'effect_short')) throw snakeError;
+        await upsertSupabaseRow('cards', toSupabaseCardMinimal(card));
+      }
+    }
+    return;
+  }
 
   if (!result.error) {
     return;
@@ -383,13 +455,16 @@ async function saveCardToSupabase(card) {
 }
 
 async function deleteCardFromSupabase(cardId) {
-  const supabaseClient = await getSupabaseClient();
-  const { error } = await supabaseClient
-    .from('cards')
-    .delete()
-    .eq('id', cardId);
-  if (error) {
-    throw error;
+  try {
+    const supabaseClient = await getSupabaseClient();
+    const { error } = await supabaseClient
+      .from('cards')
+      .delete()
+      .eq('id', cardId);
+    if (error) throw error;
+  } catch (error) {
+    console.warn('Supabase JS clientでカード削除できませんでした。RESTで再試行します。', error);
+    await deleteSupabaseRow('cards', 'id', cardId);
   }
 }
 
