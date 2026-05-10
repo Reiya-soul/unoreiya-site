@@ -527,6 +527,7 @@ function filterCards() {
 function showCardDetail(card) {
   const modal = document.getElementById("cardModal");
   const modalBody = modal?.querySelector(".modal-body");
+  const modalContent = modal?.querySelector(".modal-content");
   const modalImage = document.getElementById("modalImage");
   const modalImagePlaceholder = document.getElementById("modalImagePlaceholder");
   const modalId = document.getElementById("modalId");
@@ -538,37 +539,46 @@ function showCardDetail(card) {
   const modalTags = document.getElementById("modalTags");
   const modalRelatedCards = document.getElementById("modalRelatedCards");
   const modalDetails = modal?.querySelector(".modal-details");
+  const isPortraitTouch = window.innerHeight > window.innerWidth && navigator.maxTouchPoints > 0;
 
-  if (window.matchMedia("(max-width: 900px)").matches) {
+  if (isPortraitTouch) {
     modal.style.padding = "12px";
-    modal.querySelector(".modal-content").style.width = "100%";
-    modal.querySelector(".modal-content").style.maxWidth = "100%";
-    modalBody.style.gridTemplateColumns = "1fr";
+    modalContent.style.width = "100%";
+    modalContent.style.maxWidth = "100%";
+    modalContent.style.boxSizing = "border-box";
+    modalContent.style.overflowX = "hidden";
+    modalBody.style.display = "flex";
+    modalBody.style.flexDirection = "column";
+    modalBody.style.alignItems = "stretch";
     modalBody.style.gap = "18px";
     modalImage.style.width = "min(100%, 320px)";
     modalImage.style.maxWidth = "320px";
-    modalImage.style.justifySelf = "center";
+    modalImage.style.alignSelf = "center";
     modalImagePlaceholder.style.width = "min(100%, 320px)";
     modalImagePlaceholder.style.maxWidth = "320px";
-    modalImagePlaceholder.style.justifySelf = "center";
+    modalImagePlaceholder.style.alignSelf = "center";
     modalDetails.style.width = "100%";
     modalDetails.style.maxWidth = "100%";
-    modalDetails.style.gridColumn = "1 / -1";
+    modalDetails.style.minWidth = "0";
   } else {
     modal.style.padding = "";
-    modal.querySelector(".modal-content").style.width = "";
-    modal.querySelector(".modal-content").style.maxWidth = "";
-    modalBody.style.gridTemplateColumns = "";
+    modalContent.style.width = "";
+    modalContent.style.maxWidth = "";
+    modalContent.style.boxSizing = "";
+    modalContent.style.overflowX = "";
+    modalBody.style.display = "";
+    modalBody.style.flexDirection = "";
+    modalBody.style.alignItems = "";
     modalBody.style.gap = "";
     modalImage.style.width = "";
     modalImage.style.maxWidth = "";
-    modalImage.style.justifySelf = "";
+    modalImage.style.alignSelf = "";
     modalImagePlaceholder.style.width = "";
     modalImagePlaceholder.style.maxWidth = "";
-    modalImagePlaceholder.style.justifySelf = "";
+    modalImagePlaceholder.style.alignSelf = "";
     modalDetails.style.width = "";
     modalDetails.style.maxWidth = "";
-    modalDetails.style.gridColumn = "";
+    modalDetails.style.minWidth = "";
   }
 
   const imageSrc = getCardImage(card);

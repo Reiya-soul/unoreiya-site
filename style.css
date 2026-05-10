@@ -1073,7 +1073,7 @@ nav a:hover {
   }
 }
 
-@media (max-width: 900px) {
+@media (orientation: portrait) and (hover: none) and (pointer: coarse) {
   .modal {
     padding: 12px !important;
   }
@@ -1114,7 +1114,37 @@ nav a:hover {
   }
 }
 
-@media (max-width: 900px) {
+@media (orientation: portrait) and (hover: none) and (pointer: coarse) {
+  #cardModal .modal-body {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 18px !important;
+  }
+
+  #cardModal .modal-image,
+  #cardModal .modal-body .image-placeholder {
+    width: min(100%, 320px) !important;
+    max-width: 320px !important;
+    height: auto !important;
+    align-self: center !important;
+  }
+
+  #cardModal .modal-details {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+@media (orientation: portrait) and (hover: none) and (pointer: coarse) {
+  #cardModal .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+  }
+
   #cardModal .modal-body {
     display: flex !important;
     flex-direction: column !important;
