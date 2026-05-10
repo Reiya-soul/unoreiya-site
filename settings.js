@@ -168,14 +168,26 @@ function getSupabaseClient() {
   throw new Error('Supabase client is not loaded.');
 }
 
+function isMissingColumnError(error, columnName) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return message.includes(columnName.toLowerCase()) && message.includes('column');
+}
+
 async function fetchOptionsFromSupabase() {
   const supabaseClient = await getSupabaseClient();
-  const { data, error } = await supabaseClient
+  let { data, error } = await supabaseClient
     .from('card_options')
-    .select('id, kind, name, sort_order')
+    .select('id, kind, name, sort_order, created_at')
     .in('kind', Array.from(allowedKinds))
-    .order('sort_order', { ascending: true })
-    .order('id', { ascending: true });
+    .order('created_at', { ascending: true });
+
+  if (isMissingColumnError(error, 'created_at')) {
+    ({ data, error } = await supabaseClient
+      .from('card_options')
+      .select('id, kind, name, sort_order')
+      .in('kind', Array.from(allowedKinds))
+      .order('id', { ascending: true }));
+  }
 
   if (error) throw error;
   return data || [];

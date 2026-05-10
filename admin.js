@@ -202,11 +202,18 @@ function groupOptionRows(rows) {
 async function loadCardOptions() {
   try {
     const supabaseClient = await getSupabaseClient();
-    const { data, error } = await supabaseClient
+    let { data, error } = await supabaseClient
       .from('card_options')
-      .select('id, kind, name, sort_order')
-      .order('sort_order', { ascending: true })
-      .order('id', { ascending: true });
+      .select('id, kind, name, sort_order, created_at')
+      .order('created_at', { ascending: true });
+
+    if (isMissingColumnError(error, 'created_at')) {
+      ({ data, error } = await supabaseClient
+        .from('card_options')
+        .select('id, kind, name, sort_order')
+        .order('id', { ascending: true }));
+    }
+
     if (error) throw error;
     console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
     const options = groupOptionRows(data || []);

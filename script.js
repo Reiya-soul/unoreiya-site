@@ -320,22 +320,36 @@ function groupOptionRows(rows) {
 }
 
 async function fetchCardOptionsFromSupabase() {
+  const buildOptionsQuery = supabaseClient => supabaseClient
+    .from("card_options")
+    .select("id, kind, name, sort_order, created_at");
+
   try {
     const supabaseClient = getSupabaseClient();
-    const { data, error } = await supabaseClient
-      .from("card_options")
-      .select("id, kind, name, sort_order")
-      .order("sort_order", { ascending: true })
-      .order("id", { ascending: true });
+    let { data, error } = await buildOptionsQuery(supabaseClient).order("created_at", { ascending: true });
+
+    if (isMissingColumnError(error, "created_at")) {
+      ({ data, error } = await supabaseClient
+        .from("card_options")
+        .select("id, kind, name, sort_order")
+        .order("id", { ascending: true }));
+    }
 
     if (error) throw error;
     console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
     return groupOptionRows(data || []);
   } catch (error) {
     console.warn("Supabase JS clientで選択肢を読めませんでした。RESTで再試行します。", error);
-    const data = await fetchSupabaseRows("card_options?select=id,kind,name,sort_order&order=sort_order.asc&order=id.asc");
-    console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
-    return groupOptionRows(data || []);
+    try {
+      const data = await fetchSupabaseRows("card_options?select=id,kind,name,sort_order,created_at&order=created_at.asc");
+      console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
+      return groupOptionRows(data || []);
+    } catch (restError) {
+      if (!isMissingColumnError(restError, "created_at")) throw restError;
+      const data = await fetchSupabaseRows("card_options?select=id,kind,name,sort_order&order=id.asc");
+      console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
+      return groupOptionRows(data || []);
+    }
   }
 }
 
