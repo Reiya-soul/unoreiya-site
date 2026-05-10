@@ -1051,3 +1051,88 @@ nav a:hover {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 900px) {
+  #cardList.card-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 16px 10px !important;
+    justify-content: stretch !important;
+  }
+
+  #cardList.card-grid .card {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  #cardList.card-grid .card-image,
+  #cardList.card-grid .card > .image-placeholder {
+    width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 3 / 4 !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .modal {
+    padding: 12px !important;
+  }
+
+  .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 18px !important;
+  }
+
+  .modal-body {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 18px !important;
+    align-items: start !important;
+  }
+
+  .modal-image,
+  .modal-body .image-placeholder {
+    width: min(100%, 320px) !important;
+    max-width: 320px !important;
+    height: auto !important;
+    justify-self: center !important;
+  }
+
+  .modal-details {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    grid-column: 1 / -1 !important;
+  }
+
+  .modal-details h2,
+  .modal-details p,
+  .modal-effect {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 900px) {
+  #cardModal .modal-body {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 18px !important;
+  }
+
+  #cardModal .modal-image,
+  #cardModal .modal-body .image-placeholder {
+    width: min(100%, 320px) !important;
+    max-width: 320px !important;
+    height: auto !important;
+    align-self: center !important;
+  }
+
+  #cardModal .modal-details {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+}
