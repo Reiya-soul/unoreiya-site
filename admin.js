@@ -702,7 +702,7 @@ function buildCardFromForm() {
     series: document.getElementById('series').value.trim(),
     category: document.getElementById('category').value.trim(),
     tags: getSelectedTags(),
-    keywords: document.getElementById('keywords').value.split(',').map(k => k.trim()).filter(k => k),
+    keywords: getSelectedRelatedIds(),
     type: document.getElementById('type').value.trim(),
     image: document.getElementById('image').value.trim()
   };
@@ -742,6 +742,106 @@ function addSelectedTag(tag) {
   selectedTagsDiv.appendChild(tagDiv);
 }
 
+function getCardLabel(card) {
+  if (!card) return '';
+  return [card.id, card.name].filter(Boolean).join(' / ');
+}
+
+function getSelectedRelatedIds() {
+  const selectedRelatedCards = document.getElementById('selectedRelatedCards');
+  if (!selectedRelatedCards) {
+    return normalizeTags(document.getElementById('keywords')?.value || '');
+  }
+  return Array.from(selectedRelatedCards.querySelectorAll('[data-related-id]'))
+    .map(item => item.dataset.relatedId)
+    .filter(Boolean);
+}
+
+function syncRelatedIdsInput() {
+  const keywordsInput = document.getElementById('keywords');
+  if (keywordsInput) {
+    keywordsInput.value = getSelectedRelatedIds().join(', ');
+  }
+}
+
+function addSelectedRelatedCard(cardOrId) {
+  const selectedRelatedCards = document.getElementById('selectedRelatedCards');
+  if (!selectedRelatedCards) return;
+
+  const relatedId = String(typeof cardOrId === 'object' ? cardOrId.id : cardOrId || '').trim();
+  if (!relatedId || getSelectedRelatedIds().includes(relatedId)) return;
+
+  const currentId = document.getElementById('id')?.value.trim();
+  if (currentId && relatedId === currentId) return;
+
+  const card = adminCards.find(item => String(item.id) === relatedId) || { id: relatedId, name: relatedId };
+  const item = document.createElement('span');
+  item.className = 'selected-related-card';
+  item.dataset.relatedId = relatedId;
+  item.appendChild(document.createTextNode(getCardLabel(card)));
+
+  const removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.textContent = '×';
+  removeButton.setAttribute('aria-label', '関連から削除');
+  removeButton.addEventListener('click', () => {
+    item.remove();
+    syncRelatedIdsInput();
+  });
+
+  item.appendChild(removeButton);
+  selectedRelatedCards.appendChild(item);
+  syncRelatedIdsInput();
+}
+
+function setSelectedRelatedCards(relatedIds) {
+  const selectedRelatedCards = document.getElementById('selectedRelatedCards');
+  if (!selectedRelatedCards) return;
+  selectedRelatedCards.innerHTML = '';
+  normalizeTags(relatedIds).forEach(relatedId => addSelectedRelatedCard(relatedId));
+  syncRelatedIdsInput();
+}
+
+function renderRelatedSearchResults() {
+  const searchInput = document.getElementById('relatedCardSearch');
+  const results = document.getElementById('relatedCardSearchResults');
+  if (!searchInput || !results) return;
+
+  const query = searchInput.value.trim().toLowerCase();
+  results.textContent = '';
+  if (!query) return;
+
+  const selectedIds = new Set(getSelectedRelatedIds());
+  const currentId = document.getElementById('id')?.value.trim();
+  const matches = adminCards
+    .filter(card => {
+      const id = String(card.id || '');
+      if (!id || id === currentId || selectedIds.has(id)) return false;
+      return getCardLabel(card).toLowerCase().includes(query);
+    })
+    .slice(0, 8);
+
+  matches.forEach(card => {
+    const row = document.createElement('div');
+    row.className = 'related-search-result';
+
+    const label = document.createElement('span');
+    label.textContent = getCardLabel(card);
+    row.appendChild(label);
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '追加';
+    button.addEventListener('click', () => {
+      addSelectedRelatedCard(card);
+      searchInput.value = '';
+      renderRelatedSearchResults();
+    });
+    row.appendChild(button);
+    results.appendChild(row);
+  });
+}
+
 async function loadCards() {
   try {
     adminCards = await fetchCardsFromSupabase();
@@ -760,6 +860,7 @@ async function loadCards() {
   populateFilterSelect('filterType', [...new Set([...options.types, ...options.modes])]);
   renderTagSelect('tagSelect', options.tags);
   setSelectedTags([]);
+  setSelectedRelatedCards([]);
   applyFilters();
 
   // タグ追加ボタンのイベント
@@ -964,7 +1065,7 @@ function populateForm(card) {
   document.getElementById('series').value = card.series;
   document.getElementById('category').value = card.category;
   setSelectedTags(card.tags);
-  document.getElementById('keywords').value = normalizeTags(card.keywords).join(', ');
+  setSelectedRelatedCards(card.keywords);
   document.getElementById('type').value = card.type;
   document.getElementById('image').value = card.image;
   document.getElementById('imageFile').value = '';
@@ -974,6 +1075,11 @@ function populateForm(card) {
 function clearForm() {
   document.getElementById('cardForm').reset();
   setSelectedTags([]);
+  setSelectedRelatedCards([]);
+  const relatedSearchInput = document.getElementById('relatedCardSearch');
+  const relatedSearchResults = document.getElementById('relatedCardSearchResults');
+  if (relatedSearchInput) relatedSearchInput.value = '';
+  if (relatedSearchResults) relatedSearchResults.textContent = '';
   setUploadImageStatus('');
   updateImagePreview('');
 }
@@ -1008,6 +1114,17 @@ function setSaveButtonsDisabled(disabled) {
   document.getElementById('addBtn').disabled = disabled;
   document.getElementById('updateBtn').disabled = disabled;
   document.getElementById('cancelBtn').disabled = disabled;
+}
+
+function hideLegacyKeywordsField() {
+  const keywordsInput = document.getElementById('keywords');
+  const formRow = keywordsInput?.closest('.form-row');
+  if (keywordsInput) {
+    keywordsInput.type = 'hidden';
+  }
+  if (formRow) {
+    formRow.style.display = 'none';
+  }
 }
 
 document.getElementById('addBtn').addEventListener('click', async function() {
@@ -1046,8 +1163,14 @@ document.getElementById('imageFile').addEventListener('change', handleImageFileC
 
 document.getElementById('image')?.addEventListener('input', updateImagePreviewFromPath);
 
+document.getElementById('relatedCardSearch')?.addEventListener('input', renderRelatedSearchResults);
+
+document.getElementById('id')?.addEventListener('input', renderRelatedSearchResults);
+
 window.editCard = editCard;
 window.deleteCard = deleteCard;
+
+hideLegacyKeywordsField();
 
 window.addEventListener('load', initializeAdminAuth);
 

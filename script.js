@@ -143,6 +143,39 @@ function getCardKeywords(card) {
   return normalizeTags(card.keywords);
 }
 
+function getRelatedCards(card) {
+  const relatedIds = getCardKeywords(card).map(value => String(value).trim()).filter(Boolean);
+  if (!relatedIds.length) {
+    return [];
+  }
+
+  const currentId = String(card.id || "");
+  return relatedIds
+    .map(relatedId => catalogCards.find(item => String(item.id) === relatedId || item.name === relatedId))
+    .filter(relatedCard => relatedCard && String(relatedCard.id) !== currentId);
+}
+
+function renderRelatedCards(parent, card) {
+  parent.textContent = "";
+  const relatedCards = getRelatedCards(card);
+
+  relatedCards.forEach(relatedCard => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "related-card-mini";
+    item.addEventListener("click", event => {
+      event.stopPropagation();
+      showCardDetail(relatedCard);
+    });
+
+    item.appendChild(createCardImage(relatedCard));
+    const name = document.createElement("span");
+    name.textContent = relatedCard.name || relatedCard.id || "";
+    item.appendChild(name);
+    parent.appendChild(item);
+  });
+}
+
 function getCardModes(card) {
   if (Array.isArray(card.modes)) {
     return card.modes.filter(Boolean);
@@ -370,7 +403,7 @@ function displayCards(cardData) {
 
   cardData.forEach(card => {
     const cardElement = document.createElement("div");
-    cardElement.className = "card";
+    cardElement.className = "card catalog-card-compact";
     cardElement.addEventListener("click", () => showCardDetail(card));
 
     cardElement.appendChild(createCardImage(card));
@@ -472,7 +505,7 @@ function showCardDetail(card) {
   const modalType = document.getElementById("modalType");
   const modalEffect = document.getElementById("modalEffect");
   const modalTags = document.getElementById("modalTags");
-  const modalKeywords = document.getElementById("modalKeywords");
+  const modalRelatedCards = document.getElementById("modalRelatedCards");
 
   const imageSrc = getCardImage(card);
   modalImage.onerror = null;
@@ -501,7 +534,13 @@ function showCardDetail(card) {
   modalEffect.textContent = "";
   appendFormattedText(modalEffect, getCardText(card));
   appendTagPills(modalTags, normalizeTags(card.tags));
-  appendTagPills(modalKeywords, getCardKeywords(card));
+  if (modalRelatedCards) {
+    const label = modalRelatedCards.previousElementSibling;
+    if (label) {
+      label.innerHTML = "<strong>関連：</strong>";
+    }
+    renderRelatedCards(modalRelatedCards, card);
+  }
 
   modal.style.display = "block";
 }

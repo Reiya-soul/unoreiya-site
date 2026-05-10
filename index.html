@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>UNOREIYA カード図鑑</title>
-  <link rel="stylesheet" href="style.css?v=20260510-card-compact">
+  <link rel="stylesheet" href="style.css?v=20260510-related-1">
 </head>
 <body>
   <header>
@@ -73,8 +73,8 @@
           <p id="modalEffect" class="modal-effect"></p>
           <p><strong>タグ：</strong></p>
           <div id="modalTags" class="modal-tags"></div>
-          <p><strong>検索ワード：</strong></p>
-          <div id="modalKeywords" class="modal-tags"></div>
+          <p><strong>関連：</strong></p>
+          <div id="modalRelatedCards" class="related-card-list"></div>
         </div>
       </div>
       <button onclick="closeModal()" class="back-button">カード一覧に戻る</button>
@@ -84,6 +84,6 @@
   <script src="cards.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase.js"></script>
-  <script src="script.js"></script>
+  <script src="script.js?v=20260510-related-1"></script>
 </body>
 </html>
