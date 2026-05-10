@@ -1,4 +1,4 @@
-const ADMIN_PASSWORD = 'unoreiya';
+﻿const ADMIN_PASSWORD = 'unoreiya';
 const ADMIN_AUTH_STORAGE_KEY = 'unoreiyaAdminAuthenticated';
 let editingIndex = -1;
 let adminCards = [];
@@ -120,6 +120,11 @@ function normalizeTags(tags) {
     return tags.split(',').map(t => t.trim()).filter(t => t);
   }
   return [];
+}
+
+function isMissingColumnError(error, columnName) {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes(columnName.toLowerCase()) && message.includes('column');
 }
 
 function groupOptionRows(rows) {
@@ -247,14 +252,52 @@ function toSupabaseCard(card) {
   };
 }
 
-async function saveCardToSupabase(card) {
+function toSupabaseCardWithSnakeCase(card) {
+  const payload = toSupabaseCard(card);
+  payload.effect_short = payload.effectShort;
+  delete payload.effectShort;
+  return payload;
+}
+
+async function fetchCardsFromSupabase() {
   const supabaseClient = await getSupabaseClient();
-  const { error } = await supabaseClient
+  const { data, error } = await supabaseClient
     .from('cards')
-    .upsert(toSupabaseCard(card), { onConflict: 'id' });
+    .select('*')
+    .not('id', 'is', null)
+    .neq('id', '')
+    .not('name', 'is', null)
+    .neq('name', '')
+    .order('id', { ascending: true });
+
   if (error) {
     throw error;
   }
+
+  return Array.isArray(data) ? data.map(normalizeCard) : [];
+}
+
+async function saveCardToSupabase(card) {
+  const supabaseClient = await getSupabaseClient();
+  const result = await supabaseClient
+    .from('cards')
+    .upsert(toSupabaseCard(card), { onConflict: 'id' });
+
+  if (!result.error) {
+    return;
+  }
+
+  if (isMissingColumnError(result.error, 'effectShort')) {
+    const retry = await supabaseClient
+      .from('cards')
+      .upsert(toSupabaseCardWithSnakeCase(card), { onConflict: 'id' });
+    if (!retry.error) {
+      return;
+    }
+    throw retry.error;
+  }
+
+  throw result.error;
 }
 
 async function deleteCardFromSupabase(cardId) {
@@ -272,7 +315,8 @@ async function syncCardToSupabase(card, actionLabel) {
   try {
     await saveCardToSupabase(card);
   } catch (error) {
-    alert(`${actionLabel}はlocalStorageに保存しましたが、Supabaseへの保存に失敗しました。\n${error.message}`);
+    alert(`${actionLabel} failed in Supabase.\n${error.message}`);
+    throw error;
   }
 }
 
@@ -280,7 +324,8 @@ async function syncDeleteToSupabase(cardId) {
   try {
     await deleteCardFromSupabase(cardId);
   } catch (error) {
-    alert(`localStorageから削除しましたが、Supabaseからの削除に失敗しました。\n${error.message}`);
+    alert(`Delete failed in Supabase.\n${error.message}`);
+    throw error;
   }
 }
 
@@ -480,7 +525,7 @@ function normalizeCard(card) {
     id: card.id || '',
     name: card.name || '',
     text: text,
-    effectShort: card.effectShort || getShortText(text),
+    effectShort: card.effectShort || card.effect_short || card.effectshort || getShortText(text),
     series: card.series || '',
     category: card.category || '',
     tags: normalizeTags(card.tags),
@@ -541,7 +586,14 @@ function addSelectedTag(tag) {
 }
 
 async function loadCards() {
-  adminCards = JSON.parse(localStorage.getItem('adminCards') || '[]').map(normalizeCard);
+  try {
+    adminCards = await fetchCardsFromSupabase();
+    saveCards(adminCards);
+  } catch (error) {
+    console.warn('Could not load cards from Supabase. Using local cache.', error);
+    adminCards = JSON.parse(localStorage.getItem('adminCards') || '[]').map(normalizeCard);
+  }
+
   const options = await loadCardOptions();
   populateSelect('series', options.seasons);
   populateSelect('category', options.categories);
@@ -567,6 +619,12 @@ async function loadCards() {
 function saveCards(cards) {
   adminCards = cards.map(normalizeCard);
   localStorage.setItem('adminCards', JSON.stringify(adminCards));
+}
+
+async function reloadCardsFromSupabase() {
+  adminCards = await fetchCardsFromSupabase();
+  saveCards(adminCards);
+  applyFilters();
 }
 
 function getFilterValues() {
@@ -623,6 +681,11 @@ function scrollToCardForm() {
 }
 
 async function addCard(card) {
+  if (!card.id || !card.name) {
+    alert('Card ID and name are required.');
+    return;
+  }
+
   if (editingIndex >= 0) {
     await updateCard(editingIndex, card);
     return;
@@ -637,17 +700,20 @@ async function addCard(card) {
     return;
   }
 
-  adminCards.push(cardToSave);
-  saveCards(adminCards);
-  applyFilters();
+  await syncCardToSupabase(cardToSave, 'Card add');
+  await reloadCardsFromSupabase();
   clearForm();
-  await syncCardToSupabase(cardToSave, 'カード追加');
 }
 
 async function updateCard(index, card) {
   if (index < 0 || index >= adminCards.length) {
     return;
   }
+  if (!card.id || !card.name) {
+    alert('Card ID and name are required.');
+    return;
+  }
+  const previousCardId = adminCards[index]?.id || '';
   const duplicateIndex = adminCards.findIndex((existing, i) => existing.id === card.id && i !== index);
   if (duplicateIndex !== -1) {
     alert('編集中のIDは既に他のカードで使われています。');
@@ -658,25 +724,24 @@ async function updateCard(index, card) {
     return;
   }
 
-  adminCards[index] = cardToSave;
-  saveCards(adminCards);
-  applyFilters();
+  await syncCardToSupabase(cardToSave, 'Card update');
+  if (previousCardId && previousCardId !== cardToSave.id) {
+    await syncDeleteToSupabase(previousCardId);
+  }
+  await reloadCardsFromSupabase();
   clearForm();
   editingIndex = -1;
   document.getElementById('addBtn').style.display = 'inline-block';
   document.getElementById('updateBtn').style.display = 'none';
-  await syncCardToSupabase(cardToSave, 'カード更新');
 }
 
 async function deleteCard(index) {
   if (confirm('このカードを削除しますか？')) {
     const card = adminCards[index];
-    adminCards.splice(index, 1);
-    saveCards(adminCards);
-    applyFilters();
     if (card?.id) {
       await syncDeleteToSupabase(card.id);
     }
+    await reloadCardsFromSupabase();
   }
 }
 
@@ -710,8 +775,8 @@ function renderCardList(cards) {
 }
 
 function editCard(index) {
-  const cards = JSON.parse(localStorage.getItem('adminCards') || '[]').map(normalizeCard);
-  const card = cards[index];
+  const card = adminCards[index];
+  if (!card) return;
   populateForm(card);
   editingIndex = index;
   document.getElementById('addBtn').style.display = 'none';

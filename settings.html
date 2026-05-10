@@ -3,75 +3,77 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>UNOREIYA 選択肢管理</title>
+  <title>UNOREIYA Settings</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
     <div class="header-inner">
       <div>
-        <h1>UNOREIYA 選択肢管理</h1>
-        <p>カード登録で使う選択肢を管理します。</p>
-        <nav class="page-nav" aria-label="管理ページ切り替え">
-          <a href="admin.html">カード管理</a>
-          <a href="settings.html" class="active" aria-current="page">選択肢管理</a>
+        <h1>UNOREIYA Settings</h1>
+        <p>Manage card option values for the admin form and catalog filters.</p>
+        <nav class="page-nav" aria-label="Admin pages">
+          <a href="admin.html">Card Admin</a>
+          <a href="settings.html" class="active" aria-current="page">Option Settings</a>
         </nav>
       </div>
     </div>
   </header>
 
   <main>
+    <p id="settingsStatus" role="status" aria-live="polite"></p>
+
     <section id="seasonsSection" class="settings-section">
-      <h2>シーズン</h2>
+      <h2>Series</h2>
       <div class="settings-form">
-        <input type="text" id="seasonInput" placeholder="新しいシーズンを入力">
-        <button type="button" id="addSeasonBtn">追加</button>
-        <button type="button" id="updateSeasonBtn" style="display:none;">更新</button>
+        <input type="text" id="seasonInput" placeholder="New series">
+        <button type="button" id="addSeasonBtn">Add</button>
+        <button type="button" id="updateSeasonBtn" style="display:none;">Update</button>
       </div>
       <ul id="seasonsList" class="settings-list"></ul>
     </section>
 
     <section id="categoriesSection" class="settings-section">
-      <h2>カテゴリ</h2>
+      <h2>Category</h2>
       <div class="settings-form">
-        <input type="text" id="categoryInput" placeholder="新しいカテゴリを入力">
-        <button type="button" id="addCategoryBtn">追加</button>
-        <button type="button" id="updateCategoryBtn" style="display:none;">更新</button>
+        <input type="text" id="categoryInput" placeholder="New category">
+        <button type="button" id="addCategoryBtn">Add</button>
+        <button type="button" id="updateCategoryBtn" style="display:none;">Update</button>
       </div>
       <ul id="categoriesList" class="settings-list"></ul>
     </section>
 
     <section id="typesSection" class="settings-section">
-      <h2>タイプ</h2>
+      <h2>Type</h2>
       <div class="settings-form">
-        <input type="text" id="typeInput" placeholder="新しいタイプを入力">
-        <button type="button" id="addTypeBtn">追加</button>
-        <button type="button" id="updateTypeBtn" style="display:none;">更新</button>
+        <input type="text" id="typeInput" placeholder="New type">
+        <button type="button" id="addTypeBtn">Add</button>
+        <button type="button" id="updateTypeBtn" style="display:none;">Update</button>
       </div>
       <ul id="typesList" class="settings-list"></ul>
     </section>
 
-    <section id="modesSection" class="settings-section">
-      <h2>使用可能モード</h2>
-      <div class="settings-form">
-        <input type="text" id="modeInput" placeholder="新しい使用可能モードを入力">
-        <button type="button" id="addModeBtn">追加</button>
-        <button type="button" id="updateModeBtn" style="display:none;">更新</button>
-      </div>
-      <ul id="modesList" class="settings-list"></ul>
-    </section>
-
     <section id="tagsSection" class="settings-section">
-      <h2>タグ</h2>
+      <h2>Tag</h2>
       <div class="settings-form">
-        <input type="text" id="tagInput" placeholder="新しいタグを入力">
-        <button type="button" id="addTagBtn">追加</button>
-        <button type="button" id="updateTagBtn" style="display:none;">更新</button>
+        <input type="text" id="tagInput" placeholder="New tag">
+        <button type="button" id="addTagBtn">Add</button>
+        <button type="button" id="updateTagBtn" style="display:none;">Update</button>
       </div>
       <ul id="tagsList" class="settings-list"></ul>
     </section>
+
+    <section id="modesSection" class="settings-section">
+      <h2>Mode</h2>
+      <div class="settings-form">
+        <input type="text" id="modeInput" placeholder="New mode">
+        <button type="button" id="addModeBtn">Add</button>
+        <button type="button" id="updateModeBtn" style="display:none;">Update</button>
+      </div>
+      <ul id="modesList" class="settings-list"></ul>
+    </section>
   </main>
 
-  <script src="settings.js"></script>
+  <script type="module" src="settings.js"></script>
 </body>
 </html>

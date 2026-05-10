@@ -1,4 +1,4 @@
-const searchInput = document.getElementById("searchInput");
+﻿const searchInput = document.getElementById("searchInput");
 const categoryFilter = document.getElementById("categoryFilter");
 const seriesFilter = document.getElementById("seriesFilter");
 const tagFilter = document.getElementById("tagFilter");
@@ -15,11 +15,11 @@ let catalogOptions = {
   tags: []
 };
 const fallbackCardOptions = {
-  categories: ['キャラクターカード', 'SPカード', 'フィールドカード', 'ボスカード', 'High Class', 'その他'],
-  seasons: ['Original', 'Special', 'Stock制', 'UNO Flip', 'High Class', 'その他'],
-  types: ['攻撃', '防御', '妨害', 'サポート', 'ドロー', '交換', '特殊', 'その他'],
-  modes: ['Original', 'Special', 'Stock制', 'UNO Flip', 'High Class', 'その他'],
-  tags: ['妨害', 'ドロー', '手札交換', '山札操作', '捨て札操作', 'ターンスキップ', 'ボス', 'フィールド', '状態異常', 'SP', '強カード', 'その他']
+  categories: ['Character Card', 'SP Card', 'Field Card', 'Boss Card', 'High Class', 'Other'],
+  seasons: ['Original', 'Special', 'Stock', 'UNO Flip', 'High Class', 'Other'],
+  types: ['Attack', 'Defense', 'Interference', 'Support', 'Draw', 'Exchange', 'Special', 'Other'],
+  modes: ['Original', 'Special', 'Stock', 'UNO Flip', 'High Class', 'Other'],
+  tags: ['Interference', 'Draw', 'Hand Exchange', 'Deck Control', 'Discard Control', 'Turn Skip', 'Boss', 'Field', 'Status', 'SP', 'Strong Card', 'Other']
 };
 const cardOptionKinds = {
   categories: 'category',
@@ -159,7 +159,7 @@ function normalizeCard(card) {
     id: card.id || "",
     name: card.name || "",
     text: text,
-    effectShort: card.effectShort || "",
+    effectShort: card.effectShort || card.effect_short || card.effectshort || "",
     series: card.series || "",
     category: card.category || "",
     tags: normalizeTags(card.tags),
@@ -179,6 +179,14 @@ function normalizeCards(cards) {
 }
 
 function getFallbackCards() {
+  try {
+    const cachedCards = JSON.parse(localStorage.getItem("adminCards") || "[]");
+    if (Array.isArray(cachedCards) && cachedCards.length) {
+      return normalizeCards(cachedCards);
+    }
+  } catch (error) {
+    console.warn("Could not read cached admin cards.", error);
+  }
   return Array.isArray(window.cards) ? normalizeCards(window.cards) : [];
 }
 
@@ -212,7 +220,7 @@ async function fetchCardOptionsFromSupabase() {
   if (error) {
     throw error;
   }
-  console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
+  console.info(`card_options繧・{data?.length || 0}莉ｶ隱ｭ縺ｿ霎ｼ縺ｿ縺ｾ縺励◆縲Ａ);
   return groupOptionRows(data || []);
 }
 
@@ -223,7 +231,7 @@ async function loadCatalogOptions() {
       Object.keys(fallbackCardOptions).map(key => [key, options[key]?.length ? options[key] : []])
     );
   } catch (error) {
-    console.warn("Supabaseから選択肢を読み込めませんでした。固定選択肢を使用します。", error);
+    console.warn("Could not load card options from Supabase. Using fallback options.", error);
     catalogOptions = { ...fallbackCardOptions };
   }
 }
@@ -284,7 +292,7 @@ function displayCards(cardData) {
 
     const description = document.createElement("p");
     const descriptionLabel = document.createElement("strong");
-    descriptionLabel.textContent = "説明:";
+    descriptionLabel.textContent = "隱ｬ譏・";
     description.appendChild(descriptionLabel);
     description.appendChild(document.createTextNode(" "));
     appendFormattedText(description, shortEffect);
@@ -428,7 +436,7 @@ function closeModal() {
 }
 
 async function loadCatalogCards() {
-  setDataStatus("カードデータを読み込み中...");
+  setDataStatus("繧ｫ繝ｼ繝峨ョ繝ｼ繧ｿ繧定ｪｭ縺ｿ霎ｼ縺ｿ荳ｭ...");
   noResults.hidden = true;
   cardList.innerHTML = "";
 
@@ -437,10 +445,10 @@ async function loadCatalogCards() {
     catalogCards = await fetchCardsFromSupabase();
     setDataStatus("");
   } catch (error) {
-    console.warn("Supabaseからカードデータを読み込めませんでした。", error);
+    console.warn("Could not load cards from Supabase.", error);
     await loadCatalogOptions();
     catalogCards = getFallbackCards();
-    setDataStatus("Supabaseから読み込めなかったため、予備データを表示しています", true);
+    setDataStatus("Could not load from Supabase. Showing fallback data.", true);
   }
 
   initFilters();

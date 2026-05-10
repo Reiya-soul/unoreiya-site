@@ -1,240 +1,327 @@
-let editingIndex = -1;
-let editingType = '';
+import { supabaseClient } from "./supabase.js";
+
+let editingItem = null;
 let optionState = {};
 
 const optionConfig = {
-  seasons: { kind: 'series', inputId: 'seasonInput', buttonPrefix: 'Season', fallback: ['Original', 'Special', 'Stock制', 'UNO Flip', 'High Class', 'その他'] },
-  categories: { kind: 'category', inputId: 'categoryInput', buttonPrefix: 'Category', fallback: ['キャラクターカード', 'SPカード', 'フィールドカード', 'ボスカード', 'High Class', 'その他'] },
-  types: { kind: 'type', inputId: 'typeInput', buttonPrefix: 'Type', fallback: ['攻撃', '防御', '妨害', 'サポート', 'ドロー', '交換', '特殊', 'その他'] },
-  modes: { kind: 'mode', inputId: 'modeInput', buttonPrefix: 'Mode', fallback: ['Original', 'Special', 'Stock制', 'UNO Flip', 'High Class', 'その他'] },
-  tags: { kind: 'tag', inputId: 'tagInput', buttonPrefix: 'Tag', fallback: ['妨害', 'ドロー', '手札交換', '山札操作', '捨て札操作', 'ターンスキップ', 'ボス', 'フィールド', '状態異常', 'SP', '強カード', 'その他'] }
-};
-const cardOptionKindAliases = {
-  season: 'series',
-  seasons: 'series',
-  series: 'series',
-  category: 'category',
-  categories: 'category',
-  type: 'type',
-  types: 'type',
-  mode: 'mode',
-  modes: 'mode',
-  tag: 'tag',
-  tags: 'tag'
+  seasons: {
+    label: "Series",
+    kind: "series",
+    inputId: "seasonInput",
+    listId: "seasonsList",
+    addButtonId: "addSeasonBtn",
+    updateButtonId: "updateSeasonBtn"
+  },
+  categories: {
+    label: "Category",
+    kind: "category",
+    inputId: "categoryInput",
+    listId: "categoriesList",
+    addButtonId: "addCategoryBtn",
+    updateButtonId: "updateCategoryBtn"
+  },
+  types: {
+    label: "Type",
+    kind: "type",
+    inputId: "typeInput",
+    listId: "typesList",
+    addButtonId: "addTypeBtn",
+    updateButtonId: "updateTypeBtn"
+  },
+  tags: {
+    label: "Tag",
+    kind: "tag",
+    inputId: "tagInput",
+    listId: "tagsList",
+    addButtonId: "addTagBtn",
+    updateButtonId: "updateTagBtn"
+  },
+  modes: {
+    label: "Mode",
+    kind: "mode",
+    inputId: "modeInput",
+    listId: "modesList",
+    addButtonId: "addModeBtn",
+    updateButtonId: "updateModeBtn"
+  }
 };
 
-async function getSupabaseClient() {
-  const { supabaseClient } = await import('./supabase.js');
-  return supabaseClient;
+const allowedKinds = new Set(Object.values(optionConfig).map(config => config.kind));
+
+function setStatus(message, isError = false) {
+  const status = document.getElementById("settingsStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.style.color = isError ? "#dc3545" : "#0f172a";
 }
 
-function makeFallbackRows(type) {
-  return optionConfig[type].fallback.map((name, index) => ({
-    id: '',
-    kind: optionConfig[type].kind,
+function getInput(type) {
+  return document.getElementById(optionConfig[type].inputId);
+}
+
+function getAddButton(type) {
+  return document.getElementById(optionConfig[type].addButtonId);
+}
+
+function getUpdateButton(type) {
+  return document.getElementById(optionConfig[type].updateButtonId);
+}
+
+function normalizeOptionRow(row) {
+  const kind = String(row.kind || "").trim();
+  const name = String(row.name || "").trim();
+  if (!allowedKinds.has(kind) || !name) return null;
+
+  return {
+    id: row.id,
+    kind,
     name,
-    sort_order: index
-  }));
+    sort_order: row.sort_order ?? 0
+  };
 }
 
-function getInputId(type) {
-  return optionConfig[type].inputId;
+function resetOptionState() {
+  optionState = Object.fromEntries(Object.keys(optionConfig).map(type => [type, []]));
 }
 
-function getButtonPrefix(type) {
-  return optionConfig[type].buttonPrefix;
+function groupOptions(rows) {
+  resetOptionState();
+
+  rows
+    .map(normalizeOptionRow)
+    .filter(Boolean)
+    .forEach(option => {
+      const type = Object.keys(optionConfig).find(key => optionConfig[key].kind === option.kind);
+      if (type) optionState[type].push(option);
+    });
 }
 
 async function loadOptions() {
-  try {
-    const supabaseClient = await getSupabaseClient();
-    const { data, error } = await supabaseClient
-      .from('card_options')
-      .select('id, kind, name, sort_order')
-      .order('sort_order', { ascending: true })
-      .order('name', { ascending: true });
+  setStatus("Loading...");
 
-    if (error) throw error;
-    console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
+  const { data, error } = await supabaseClient
+    .from("card_options")
+    .select("id, kind, name, sort_order")
+    .in("kind", Array.from(allowedKinds))
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
 
-    const normalizedData = (data || [])
-      .map(option => ({
-        id: option.id,
-        kind: cardOptionKindAliases[String(option.kind || '').trim().toLowerCase()] || '',
-        name: String(option.name || '').trim(),
-        sort_order: option.sort_order ?? 0
-      }))
-      .filter(option => option.kind && option.name);
+  if (error) throw error;
 
-    optionState = Object.fromEntries(
-      Object.keys(optionConfig).map(type => [
-        type,
-        normalizedData
-          .filter(option => option.kind === optionConfig[type].kind)
-      ])
-    );
-  } catch (error) {
-    console.warn('Supabaseから選択肢を読み込めませんでした。固定選択肢を表示します。', error);
-    optionState = Object.fromEntries(Object.keys(optionConfig).map(type => [type, makeFallbackRows(type)]));
-  }
+  groupOptions(data || []);
+  setStatus(`Loaded ${data?.length || 0} card_options rows.`);
 }
 
-function renderSection(type, list) {
-  const ul = document.getElementById(`${type}List`);
-  ul.innerHTML = '';
-  list.forEach((item, index) => {
-    const li = document.createElement('li');
-    const name = document.createElement('span');
+function renderEmptyMessage(list, label) {
+  const li = document.createElement("li");
+  const span = document.createElement("span");
+  span.textContent = `No ${label} values yet.`;
+  li.appendChild(span);
+  list.appendChild(li);
+}
+
+function renderSection(type) {
+  const config = optionConfig[type];
+  const list = document.getElementById(config.listId);
+  const items = optionState[type] || [];
+
+  list.innerHTML = "";
+
+  if (!items.length) {
+    renderEmptyMessage(list, config.label);
+    return;
+  }
+
+  items.forEach(item => {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    const buttons = document.createElement("div");
+    const editButton = document.createElement("button");
+    const deleteButton = document.createElement("button");
+
     name.textContent = item.name;
-    li.appendChild(name);
+    buttons.className = "button-group";
 
-    const buttons = document.createElement('div');
-    buttons.className = 'button-group';
+    editButton.type = "button";
+    editButton.textContent = "Edit";
+    editButton.addEventListener("click", () => startEditing(type, item));
 
-    const editButton = document.createElement('button');
-    editButton.type = 'button';
-    editButton.textContent = '編集';
-    editButton.addEventListener('click', () => editItem(type, index));
+    deleteButton.type = "button";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", () => deleteItem(type, item));
+
     buttons.appendChild(editButton);
-
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.textContent = '削除';
-    deleteButton.addEventListener('click', () => deleteItem(type, index));
     buttons.appendChild(deleteButton);
-
+    li.appendChild(name);
     li.appendChild(buttons);
-    ul.appendChild(li);
+    list.appendChild(li);
   });
 }
 
 function renderAllSections() {
-  Object.keys(optionConfig).forEach(type => renderSection(type, optionState[type] || []));
-}
-
-async function addItem(type) {
-  if (editingIndex >= 0) {
-    await updateItem(type);
-    return;
-  }
-  const input = document.getElementById(getInputId(type));
-  const value = input.value.trim();
-  if (!value) return;
-  if ((optionState[type] || []).some(option => option.name === value)) {
-    alert('同じ項目が既に存在します。');
-    return;
-  }
-
-  try {
-    const supabaseClient = await getSupabaseClient();
-    const sortOrder = optionState[type]?.length || 0;
-    const { error } = await supabaseClient
-      .from('card_options')
-      .insert({
-        kind: optionConfig[type].kind,
-        name: value,
-        sort_order: sortOrder
-      });
-    if (error) throw error;
-    input.value = '';
-    await loadOptions();
-    renderAllSections();
-  } catch (error) {
-    alert(`選択肢の追加に失敗しました。\n${error.message}`);
-  }
-}
-
-async function updateItem(type) {
-  const input = document.getElementById(getInputId(type));
-  const value = input.value.trim();
-  if (!value) return;
-  const current = optionState[type]?.[editingIndex];
-  if (!current?.id) {
-    alert('固定の予備選択肢は編集できません。Supabaseのcard_optionsを確認してください。');
-    return;
-  }
-  if ((optionState[type] || []).some((option, index) => index !== editingIndex && option.name === value)) {
-    alert('同じ項目が既に存在します。');
-    return;
-  }
-
-  try {
-    const supabaseClient = await getSupabaseClient();
-    const { error } = await supabaseClient
-      .from('card_options')
-      .update({ name: value })
-      .eq('id', current.id);
-    if (error) throw error;
-    clearForm(type);
-    await loadOptions();
-    renderAllSections();
-  } catch (error) {
-    alert(`選択肢の更新に失敗しました。\n${error.message}`);
-  }
-}
-
-async function deleteItem(type, index) {
-  if (!confirm('この項目を削除しますか？')) return;
-  const current = optionState[type]?.[index];
-  if (!current?.id) {
-    alert('固定の予備選択肢は削除できません。Supabaseのcard_optionsを確認してください。');
-    return;
-  }
-
-  try {
-    const supabaseClient = await getSupabaseClient();
-    const { error } = await supabaseClient
-      .from('card_options')
-      .delete()
-      .eq('id', current.id);
-    if (error) throw error;
-    await loadOptions();
-    renderAllSections();
-  } catch (error) {
-    alert(`選択肢の削除に失敗しました。\n${error.message}`);
-  }
-}
-
-function editItem(type, index) {
-  const item = optionState[type]?.[index];
-  if (!item) return;
-  const input = document.getElementById(getInputId(type));
-  const addBtn = document.getElementById(`add${getButtonPrefix(type)}Btn`);
-  const updateBtn = document.getElementById(`update${getButtonPrefix(type)}Btn`);
-  input.value = item.name;
-  editingIndex = index;
-  editingType = type;
-  addBtn.style.display = 'none';
-  updateBtn.style.display = 'inline-block';
+  Object.keys(optionConfig).forEach(renderSection);
 }
 
 function clearForm(type) {
-  const input = document.getElementById(getInputId(type));
-  const addBtn = document.getElementById(`add${getButtonPrefix(type)}Btn`);
-  const updateBtn = document.getElementById(`update${getButtonPrefix(type)}Btn`);
-  input.value = '';
-  editingIndex = -1;
-  editingType = '';
-  addBtn.style.display = 'inline-block';
-  updateBtn.style.display = 'none';
+  getInput(type).value = "";
+  getAddButton(type).style.display = "inline-block";
+  getUpdateButton(type).style.display = "none";
+
+  if (editingItem?.type === type) {
+    editingItem = null;
+  }
 }
 
-window.addEventListener('load', async () => {
+function clearOtherEditState(activeType) {
+  Object.keys(optionConfig)
+    .filter(type => type !== activeType)
+    .forEach(clearForm);
+}
+
+function getTrimmedInputValue(type) {
+  return getInput(type).value.trim();
+}
+
+function hasDuplicateName(type, name, currentId = null) {
+  return (optionState[type] || []).some(item => {
+    return item.name === name && String(item.id) !== String(currentId);
+  });
+}
+
+function getNextSortOrder(type) {
+  const orders = (optionState[type] || []).map(item => Number(item.sort_order) || 0);
+  return orders.length ? Math.max(...orders) + 1 : 0;
+}
+
+async function reloadAndRender() {
   await loadOptions();
   renderAllSections();
-});
+}
 
-document.getElementById('addSeasonBtn').addEventListener('click', () => addItem('seasons'));
-document.getElementById('updateSeasonBtn').addEventListener('click', () => updateItem('seasons'));
+async function addItem(type) {
+  const config = optionConfig[type];
+  const name = getTrimmedInputValue(type);
 
-document.getElementById('addCategoryBtn').addEventListener('click', () => addItem('categories'));
-document.getElementById('updateCategoryBtn').addEventListener('click', () => updateItem('categories'));
+  if (!name) {
+    alert(`Enter a ${config.label} value.`);
+    return;
+  }
 
-document.getElementById('addTypeBtn').addEventListener('click', () => addItem('types'));
-document.getElementById('updateTypeBtn').addEventListener('click', () => updateItem('types'));
+  if (hasDuplicateName(type, name)) {
+    alert(`That ${config.label} already exists.`);
+    return;
+  }
 
-document.getElementById('addModeBtn').addEventListener('click', () => addItem('modes'));
-document.getElementById('updateModeBtn').addEventListener('click', () => updateItem('modes'));
+  const { error } = await supabaseClient
+    .from("card_options")
+    .insert({
+      kind: config.kind,
+      name,
+      sort_order: getNextSortOrder(type)
+    });
 
-document.getElementById('addTagBtn').addEventListener('click', () => addItem('tags'));
-document.getElementById('updateTagBtn').addEventListener('click', () => updateItem('tags'));
+  if (error) throw error;
+
+  clearForm(type);
+  await reloadAndRender();
+  setStatus(`${config.label} added.`);
+}
+
+function startEditing(type, item) {
+  clearOtherEditState(type);
+
+  const input = getInput(type);
+  input.value = item.name;
+  input.focus();
+  input.select();
+
+  editingItem = { type, id: item.id };
+  getAddButton(type).style.display = "none";
+  getUpdateButton(type).style.display = "inline-block";
+}
+
+async function updateItem(type) {
+  const config = optionConfig[type];
+  const name = getTrimmedInputValue(type);
+
+  if (!editingItem || editingItem.type !== type) {
+    alert("Choose an item to edit.");
+    return;
+  }
+
+  if (!name) {
+    alert(`Enter a ${config.label} value.`);
+    return;
+  }
+
+  if (hasDuplicateName(type, name, editingItem.id)) {
+    alert(`That ${config.label} already exists.`);
+    return;
+  }
+
+  const { error } = await supabaseClient
+    .from("card_options")
+    .update({ name })
+    .eq("id", editingItem.id);
+
+  if (error) throw error;
+
+  clearForm(type);
+  await reloadAndRender();
+  setStatus(`${config.label} updated.`);
+}
+
+async function deleteItem(type, item) {
+  const config = optionConfig[type];
+  if (!confirm(`Delete "${item.name}"?`)) return;
+
+  const { error } = await supabaseClient
+    .from("card_options")
+    .delete()
+    .eq("id", item.id);
+
+  if (error) throw error;
+
+  if (editingItem?.id === item.id) {
+    clearForm(type);
+  }
+
+  await reloadAndRender();
+  setStatus(`${config.label} deleted.`);
+}
+
+async function runAction(action) {
+  try {
+    await action();
+  } catch (error) {
+    console.error(error);
+    setStatus(`Supabase update failed: ${error.message}`, true);
+    alert(`Supabase update failed.\n${error.message}`);
+  }
+}
+
+function bindSection(type) {
+  getAddButton(type).addEventListener("click", () => runAction(() => addItem(type)));
+  getUpdateButton(type).addEventListener("click", () => runAction(() => updateItem(type)));
+  getInput(type).addEventListener("keydown", event => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    runAction(() => (editingItem?.type === type ? updateItem(type) : addItem(type)));
+  });
+}
+
+async function initializeSettings() {
+  resetOptionState();
+  Object.keys(optionConfig).forEach(bindSection);
+
+  try {
+    await reloadAndRender();
+  } catch (error) {
+    console.error(error);
+    resetOptionState();
+    renderAllSections();
+    setStatus(`Could not load card_options from Supabase: ${error.message}`, true);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", initializeSettings);
