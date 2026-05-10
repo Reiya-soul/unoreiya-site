@@ -1,5 +1,7 @@
 ﻿const ADMIN_PASSWORD = 'unoreiya';
 const ADMIN_AUTH_STORAGE_KEY = 'unoreiyaAdminAuthenticated';
+const CARD_OPTIONS_CACHE_KEY = 'unoreiyaCardOptionsCache';
+const DELETED_CARD_IDS_STORAGE_KEY = 'unoreiyaDeletedCardIds';
 let editingIndex = -1;
 let adminCards = [];
 let imagePreviewObjectUrl = '';
@@ -122,6 +124,57 @@ function normalizeTags(tags) {
   return [];
 }
 
+function readDeletedCardIds() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(DELETED_CARD_IDS_STORAGE_KEY) || '[]');
+    return Array.isArray(ids) ? ids.map(id => String(id)) : [];
+  } catch (error) {
+    console.warn('削除済みカードIDを読み込めませんでした。', error);
+    return [];
+  }
+}
+
+function writeDeletedCardIds(ids) {
+  localStorage.setItem(DELETED_CARD_IDS_STORAGE_KEY, JSON.stringify([...new Set(ids.filter(Boolean))]));
+}
+
+function markCardDeletedLocally(cardId) {
+  writeDeletedCardIds([...readDeletedCardIds(), cardId]);
+}
+
+function unmarkCardDeletedLocally(cardId) {
+  writeDeletedCardIds(readDeletedCardIds().filter(id => id !== cardId));
+}
+
+function applyLocalDeletedCards(cards) {
+  const deletedIds = new Set(readDeletedCardIds());
+  return cards.filter(card => !deletedIds.has(card.id));
+}
+
+function upsertLocalCard(card) {
+  unmarkCardDeletedLocally(card.id);
+  const normalizedCard = normalizeCard(card);
+  const nextCards = adminCards.filter(existing => existing.id !== normalizedCard.id);
+  nextCards.push(normalizedCard);
+  saveCards(nextCards);
+  applyFilters();
+}
+
+function deleteLocalCard(cardId) {
+  markCardDeletedLocally(cardId);
+  saveCards(adminCards.filter(card => card.id !== cardId));
+  applyFilters();
+}
+
+function readCachedOptionRows() {
+  try {
+    const rows = JSON.parse(localStorage.getItem(CARD_OPTIONS_CACHE_KEY) || '[]');
+    return Array.isArray(rows) ? rows : [];
+  } catch (error) {
+    console.warn('選択肢キャッシュを読み込めませんでした。', error);
+    return [];
+  }
+}
 function isMissingColumnError(error, columnName) {
   const message = String(error?.message || '').toLowerCase();
   return message.includes(columnName.toLowerCase()) && message.includes('column');
@@ -157,12 +210,22 @@ async function loadCardOptions() {
     if (error) throw error;
     console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
     const options = groupOptionRows(data || []);
+    const cachedOptions = groupOptionRows(readCachedOptionRows());
     return Object.fromEntries(
-      Object.keys(fallbackCardOptions).map(key => [key, options[key]?.length ? options[key] : []])
+      Object.keys(fallbackCardOptions).map(key => [
+        key,
+        [...new Set([...(options[key] || []), ...(cachedOptions[key] || [])])]
+      ])
     );
   } catch (error) {
     console.warn('Supabaseから選択肢を読み込めませんでした。固定選択肢を使います。', error);
-    return { ...fallbackCardOptions };
+    const cachedOptions = groupOptionRows(readCachedOptionRows());
+    return Object.fromEntries(
+      Object.keys(fallbackCardOptions).map(key => [
+        key,
+        cachedOptions[key]?.length ? cachedOptions[key] : fallbackCardOptions[key]
+      ])
+    );
   }
 }
 
@@ -198,9 +261,13 @@ function isDuplicateStorageError(error) {
   return error?.statusCode === '409' || error?.status === 409 || message.includes('already exists') || message.includes('duplicate');
 }
 
-async function getSupabaseClient() {
-  const { supabaseClient } = await import('./supabase.js');
-  return supabaseClient;
+function getSupabaseClient() {
+  if (window.supabaseClient) return window.supabaseClient;
+  if (window.supabase?.createClient && window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
+    window.supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    return window.supabaseClient;
+  }
+  throw new Error('Supabaseを読み込めませんでした。');
 }
 
 async function uploadImageFile(supabaseClient, storageFileName, file, options = {}) {
@@ -259,6 +326,12 @@ function toSupabaseCardWithSnakeCase(card) {
   return payload;
 }
 
+function toSupabaseCardMinimal(card) {
+  const payload = toSupabaseCard(card);
+  delete payload.effectShort;
+  return payload;
+}
+
 async function fetchCardsFromSupabase() {
   const supabaseClient = await getSupabaseClient();
   const { data, error } = await supabaseClient
@@ -274,7 +347,7 @@ async function fetchCardsFromSupabase() {
     throw error;
   }
 
-  return Array.isArray(data) ? data.map(normalizeCard) : [];
+  return applyLocalDeletedCards(Array.isArray(data) ? data.map(normalizeCard) : []);
 }
 
 async function saveCardToSupabase(card) {
@@ -293,6 +366,15 @@ async function saveCardToSupabase(card) {
       .upsert(toSupabaseCardWithSnakeCase(card), { onConflict: 'id' });
     if (!retry.error) {
       return;
+    }
+    if (isMissingColumnError(retry.error, 'effect_short')) {
+      const minimalRetry = await supabaseClient
+        .from('cards')
+        .upsert(toSupabaseCardMinimal(card), { onConflict: 'id' });
+      if (!minimalRetry.error) {
+        return;
+      }
+      throw minimalRetry.error;
     }
     throw retry.error;
   }
@@ -315,7 +397,7 @@ async function syncCardToSupabase(card, actionLabel) {
   try {
     await saveCardToSupabase(card);
   } catch (error) {
-    alert(`${actionLabel} failed in Supabase.\n${error.message}`);
+    alert(`${actionLabel}に失敗しました。ローカルには反映します。\n${error.message}`);
     throw error;
   }
 }
@@ -324,7 +406,7 @@ async function syncDeleteToSupabase(cardId) {
   try {
     await deleteCardFromSupabase(cardId);
   } catch (error) {
-    alert(`Delete failed in Supabase.\n${error.message}`);
+    alert(`Supabaseからの削除に失敗しました。ローカル一覧からは削除します。\n${error.message}`);
     throw error;
   }
 }
@@ -591,7 +673,7 @@ async function loadCards() {
     saveCards(adminCards);
   } catch (error) {
     console.warn('Could not load cards from Supabase. Using local cache.', error);
-    adminCards = JSON.parse(localStorage.getItem('adminCards') || '[]').map(normalizeCard);
+    adminCards = applyLocalDeletedCards(JSON.parse(localStorage.getItem('adminCards') || '[]').map(normalizeCard));
   }
 
   const options = await loadCardOptions();
@@ -682,7 +764,7 @@ function scrollToCardForm() {
 
 async function addCard(card) {
   if (!card.id || !card.name) {
-    alert('Card ID and name are required.');
+    alert('カードIDとカード名を入力してください。')
     return;
   }
 
@@ -700,8 +782,12 @@ async function addCard(card) {
     return;
   }
 
-  await syncCardToSupabase(cardToSave, 'Card add');
-  await reloadCardsFromSupabase();
+  try {
+    await syncCardToSupabase(cardToSave, 'カード追加');
+    await reloadCardsFromSupabase();
+  } catch (error) {
+    upsertLocalCard(cardToSave);
+  }
   clearForm();
 }
 
@@ -710,7 +796,7 @@ async function updateCard(index, card) {
     return;
   }
   if (!card.id || !card.name) {
-    alert('Card ID and name are required.');
+    alert('カードIDとカード名を入力してください。')
     return;
   }
   const previousCardId = adminCards[index]?.id || '';
@@ -724,11 +810,18 @@ async function updateCard(index, card) {
     return;
   }
 
-  await syncCardToSupabase(cardToSave, 'Card update');
-  if (previousCardId && previousCardId !== cardToSave.id) {
-    await syncDeleteToSupabase(previousCardId);
+  try {
+    await syncCardToSupabase(cardToSave, 'カード更新');
+    if (previousCardId && previousCardId !== cardToSave.id) {
+      await syncDeleteToSupabase(previousCardId);
+    }
+    await reloadCardsFromSupabase();
+  } catch (error) {
+    if (previousCardId && previousCardId !== cardToSave.id) {
+      deleteLocalCard(previousCardId);
+    }
+    upsertLocalCard(cardToSave);
   }
-  await reloadCardsFromSupabase();
   clearForm();
   editingIndex = -1;
   document.getElementById('addBtn').style.display = 'inline-block';
@@ -739,9 +832,13 @@ async function deleteCard(index) {
   if (confirm('このカードを削除しますか？')) {
     const card = adminCards[index];
     if (card?.id) {
-      await syncDeleteToSupabase(card.id);
+      try {
+        await syncDeleteToSupabase(card.id);
+        await reloadCardsFromSupabase();
+      } catch (error) {
+        deleteLocalCard(card.id);
+      }
     }
-    await reloadCardsFromSupabase();
   }
 }
 
@@ -878,3 +975,8 @@ window.editCard = editCard;
 window.deleteCard = deleteCard;
 
 window.addEventListener('load', initializeAdminAuth);
+
+
+
+
+

@@ -6,6 +6,8 @@ const modeFilter = document.getElementById("modeFilter");
 const cardList = document.getElementById("cardList");
 const noResults = document.getElementById("noResults");
 const dataStatus = document.getElementById("dataStatus");
+const CARD_OPTIONS_CACHE_KEY = 'unoreiyaCardOptionsCache';
+const DELETED_CARD_IDS_STORAGE_KEY = 'unoreiyaDeletedCardIds';
 let catalogCards = [];
 let catalogOptions = {
   categories: [],
@@ -15,11 +17,11 @@ let catalogOptions = {
   tags: []
 };
 const fallbackCardOptions = {
-  categories: ['Character Card', 'SP Card', 'Field Card', 'Boss Card', 'High Class', 'Other'],
-  seasons: ['Original', 'Special', 'Stock', 'UNO Flip', 'High Class', 'Other'],
-  types: ['Attack', 'Defense', 'Interference', 'Support', 'Draw', 'Exchange', 'Special', 'Other'],
-  modes: ['Original', 'Special', 'Stock', 'UNO Flip', 'High Class', 'Other'],
-  tags: ['Interference', 'Draw', 'Hand Exchange', 'Deck Control', 'Discard Control', 'Turn Skip', 'Boss', 'Field', 'Status', 'SP', 'Strong Card', 'Other']
+  categories: ['キャラクターカード', 'SPカード', 'フィールドカード', 'ボスカード', 'High Class', 'その他'],
+  seasons: ['Original', 'Special', 'Stock制', 'UNO Flip', 'High Class', 'その他'],
+  types: ['攻撃', '防御', '妨害', 'サポート', 'ドロー', '交換', '特殊', 'その他'],
+  modes: ['Original', 'Special', 'Stock制', 'UNO Flip', 'High Class', 'その他'],
+  tags: ['妨害', 'ドロー', '手札交換', '山札操作', '捨て札操作', 'ターンスキップ', 'ボス', 'フィールド', '状態異常', 'SP', '強カード', 'その他']
 };
 const cardOptionKinds = {
   categories: 'category',
@@ -41,6 +43,15 @@ const cardOptionKindAliases = {
   tag: 'tag',
   tags: 'tag'
 };
+
+function getSupabaseClient() {
+  if (window.supabaseClient) return window.supabaseClient;
+  if (window.supabase?.createClient && window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
+    window.supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    return window.supabaseClient;
+  }
+  throw new Error('Supabaseを読み込めませんでした。');
+}
 
 function normalizeTags(tags) {
   if (Array.isArray(tags)) {
@@ -178,16 +189,52 @@ function normalizeCards(cards) {
   return cards.map(normalizeCard).filter(isDisplayableCard);
 }
 
-function getFallbackCards() {
+function readDeletedCardIds() {
   try {
-    const cachedCards = JSON.parse(localStorage.getItem("adminCards") || "[]");
-    if (Array.isArray(cachedCards) && cachedCards.length) {
-      return normalizeCards(cachedCards);
-    }
+    const ids = JSON.parse(localStorage.getItem(DELETED_CARD_IDS_STORAGE_KEY) || "[]");
+    return Array.isArray(ids) ? ids.map(id => String(id)) : [];
   } catch (error) {
-    console.warn("Could not read cached admin cards.", error);
+    console.warn("削除済みカードIDを読み込めませんでした。", error);
+    return [];
   }
+}
+
+function readCachedCards() {
+  try {
+    const cards = JSON.parse(localStorage.getItem("adminCards") || "[]");
+    return Array.isArray(cards) ? normalizeCards(cards) : [];
+  } catch (error) {
+    console.warn("管理画面のカードキャッシュを読み込めませんでした。", error);
+    return [];
+  }
+}
+
+function mergeCards(supabaseCards, cachedCards) {
+  const deletedIds = new Set(readDeletedCardIds());
+  const cardsById = new Map();
+  supabaseCards.forEach(card => {
+    if (!deletedIds.has(card.id)) cardsById.set(card.id, card);
+  });
+  cachedCards.forEach(card => {
+    if (!deletedIds.has(card.id)) cardsById.set(card.id, card);
+  });
+  return [...cardsById.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function getFallbackCards() {
+  const cachedCards = readCachedCards();
+  if (cachedCards.length) return mergeCards([], cachedCards);
   return Array.isArray(window.cards) ? normalizeCards(window.cards) : [];
+}
+
+function readCachedOptionRows() {
+  try {
+    const rows = JSON.parse(localStorage.getItem(CARD_OPTIONS_CACHE_KEY) || "[]");
+    return Array.isArray(rows) ? rows : [];
+  } catch (error) {
+    console.warn("選択肢キャッシュを読み込めませんでした。", error);
+    return [];
+  }
 }
 
 function groupOptionRows(rows) {
@@ -210,7 +257,7 @@ function groupOptionRows(rows) {
 }
 
 async function fetchCardOptionsFromSupabase() {
-  const { supabaseClient } = await import("./supabase.js");
+  const supabaseClient = getSupabaseClient();
   const { data, error } = await supabaseClient
     .from("card_options")
     .select("kind, name, sort_order")
@@ -220,24 +267,34 @@ async function fetchCardOptionsFromSupabase() {
   if (error) {
     throw error;
   }
-  console.info(`card_options繧・{data?.length || 0}莉ｶ隱ｭ縺ｿ霎ｼ縺ｿ縺ｾ縺励◆縲Ａ);
+  console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
   return groupOptionRows(data || []);
 }
 
 async function loadCatalogOptions() {
   try {
     const options = await fetchCardOptionsFromSupabase();
+    const cachedOptions = groupOptionRows(readCachedOptionRows());
     catalogOptions = Object.fromEntries(
-      Object.keys(fallbackCardOptions).map(key => [key, options[key]?.length ? options[key] : []])
+      Object.keys(fallbackCardOptions).map(key => [
+        key,
+        [...new Set([...(options[key] || []), ...(cachedOptions[key] || [])])]
+      ])
     );
   } catch (error) {
     console.warn("Could not load card options from Supabase. Using fallback options.", error);
-    catalogOptions = { ...fallbackCardOptions };
+    const cachedOptions = groupOptionRows(readCachedOptionRows());
+    catalogOptions = Object.fromEntries(
+      Object.keys(fallbackCardOptions).map(key => [
+        key,
+        cachedOptions[key]?.length ? cachedOptions[key] : fallbackCardOptions[key]
+      ])
+    );
   }
 }
 
 async function fetchCardsFromSupabase() {
-  const { supabaseClient } = await import("./supabase.js");
+  const supabaseClient = getSupabaseClient();
   const { data, error } = await supabaseClient
     .from("cards")
     .select("*")
@@ -436,19 +493,19 @@ function closeModal() {
 }
 
 async function loadCatalogCards() {
-  setDataStatus("繧ｫ繝ｼ繝峨ョ繝ｼ繧ｿ繧定ｪｭ縺ｿ霎ｼ縺ｿ荳ｭ...");
+  setDataStatus("カードデータを読み込み中...");
   noResults.hidden = true;
   cardList.innerHTML = "";
 
   try {
     await loadCatalogOptions();
-    catalogCards = await fetchCardsFromSupabase();
+    catalogCards = mergeCards(await fetchCardsFromSupabase(), readCachedCards());
     setDataStatus("");
   } catch (error) {
     console.warn("Could not load cards from Supabase.", error);
     await loadCatalogOptions();
     catalogCards = getFallbackCards();
-    setDataStatus("Could not load from Supabase. Showing fallback data.", true);
+    setDataStatus("Supabaseから読み込めなかったため、予備データを表示しています。", true);
   }
 
   initFilters();
@@ -462,3 +519,4 @@ tagFilter.addEventListener("change", filterCards);
 modeFilter.addEventListener("change", filterCards);
 
 loadCatalogCards();
+
