@@ -204,9 +204,9 @@ async function loadCardOptions() {
     const supabaseClient = await getSupabaseClient();
     const { data, error } = await supabaseClient
       .from('card_options')
-      .select('kind, name, sort_order')
+      .select('id, kind, name, sort_order')
       .order('sort_order', { ascending: true })
-      .order('name', { ascending: true });
+      .order('id', { ascending: true });
     if (error) throw error;
     console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
     const options = groupOptionRows(data || []);
@@ -385,23 +385,34 @@ function toSupabaseCardMinimal(card) {
 }
 
 async function fetchCardsFromSupabase() {
+  const buildCardsQuery = supabaseClient => supabaseClient
+    .from('cards')
+    .select('*')
+    .not('id', 'is', null)
+    .neq('id', '')
+    .not('name', 'is', null)
+    .neq('name', '');
+
   try {
     const supabaseClient = await getSupabaseClient();
-    const { data, error } = await supabaseClient
-      .from('cards')
-      .select('*')
-      .not('id', 'is', null)
-      .neq('id', '')
-      .not('name', 'is', null)
-      .neq('name', '')
-      .order('id', { ascending: true });
+    let { data, error } = await buildCardsQuery(supabaseClient).order('created_at', { ascending: true });
+
+    if (isMissingColumnError(error, 'created_at')) {
+      ({ data, error } = await buildCardsQuery(supabaseClient));
+    }
 
     if (error) throw error;
     return applyLocalDeletedCards(Array.isArray(data) ? data.map(normalizeCard) : []);
   } catch (error) {
     console.warn('Supabase JS clientでカードを読めませんでした。RESTで再試行します。', error);
-    const data = await fetchSupabaseRows('cards?select=*&id=not.is.null&id=neq.&name=not.is.null&name=neq.&order=id.asc');
-    return applyLocalDeletedCards(Array.isArray(data) ? data.map(normalizeCard) : []);
+    try {
+      const data = await fetchSupabaseRows('cards?select=*&id=not.is.null&id=neq.&name=not.is.null&name=neq.&order=created_at.asc');
+      return applyLocalDeletedCards(Array.isArray(data) ? data.map(normalizeCard) : []);
+    } catch (restError) {
+      if (!isMissingColumnError(restError, 'created_at')) throw restError;
+      const data = await fetchSupabaseRows('cards?select=*&id=not.is.null&id=neq.&name=not.is.null&name=neq.');
+      return applyLocalDeletedCards(Array.isArray(data) ? data.map(normalizeCard) : []);
+    }
   }
 }
 

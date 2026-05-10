@@ -78,6 +78,11 @@ async function fetchSupabaseRows(path) {
   return response.json();
 }
 
+function isMissingColumnError(error, columnName) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes(columnName.toLowerCase()) && message.includes("column");
+}
+
 function normalizeTags(tags) {
   if (Array.isArray(tags)) {
     return tags.map(tag => String(tag).trim()).filter(Boolean);
@@ -276,7 +281,7 @@ function mergeCards(supabaseCards, cachedCards) {
   cachedCards.forEach(card => {
     if (!deletedIds.has(card.id)) cardsById.set(card.id, card);
   });
-  return [...cardsById.values()].sort((a, b) => a.id.localeCompare(b.id));
+  return [...cardsById.values()];
 }
 
 function getFallbackCards() {
@@ -319,16 +324,16 @@ async function fetchCardOptionsFromSupabase() {
     const supabaseClient = getSupabaseClient();
     const { data, error } = await supabaseClient
       .from("card_options")
-      .select("kind, name, sort_order")
+      .select("id, kind, name, sort_order")
       .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
+      .order("id", { ascending: true });
 
     if (error) throw error;
     console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
     return groupOptionRows(data || []);
   } catch (error) {
     console.warn("Supabase JS clientで選択肢を読めませんでした。RESTで再試行します。", error);
-    const data = await fetchSupabaseRows("card_options?select=kind,name,sort_order&order=sort_order.asc&order=name.asc");
+    const data = await fetchSupabaseRows("card_options?select=id,kind,name,sort_order&order=sort_order.asc&order=id.asc");
     console.info(`card_optionsを${data?.length || 0}件読み込みました。`);
     return groupOptionRows(data || []);
   }
@@ -357,23 +362,34 @@ async function loadCatalogOptions() {
 }
 
 async function fetchCardsFromSupabase() {
+  const buildCardsQuery = supabaseClient => supabaseClient
+    .from("cards")
+    .select("*")
+    .not("id", "is", null)
+    .neq("id", "")
+    .not("name", "is", null)
+    .neq("name", "");
+
   try {
     const supabaseClient = getSupabaseClient();
-    const { data, error } = await supabaseClient
-      .from("cards")
-      .select("*")
-      .not("id", "is", null)
-      .neq("id", "")
-      .not("name", "is", null)
-      .neq("name", "")
-      .order("id", { ascending: true });
+    let { data, error } = await buildCardsQuery(supabaseClient).order("created_at", { ascending: true });
+
+    if (isMissingColumnError(error, "created_at")) {
+      ({ data, error } = await buildCardsQuery(supabaseClient));
+    }
 
     if (error) throw error;
     return Array.isArray(data) ? normalizeCards(data) : [];
   } catch (error) {
     console.warn("Supabase JS clientでカードを読めませんでした。RESTで再試行します。", error);
-    const data = await fetchSupabaseRows("cards?select=*&id=not.is.null&id=neq.&name=not.is.null&name=neq.&order=id.asc");
-    return Array.isArray(data) ? normalizeCards(data) : [];
+    try {
+      const data = await fetchSupabaseRows("cards?select=*&id=not.is.null&id=neq.&name=not.is.null&name=neq.&order=created_at.asc");
+      return Array.isArray(data) ? normalizeCards(data) : [];
+    } catch (restError) {
+      if (!isMissingColumnError(restError, "created_at")) throw restError;
+      const data = await fetchSupabaseRows("cards?select=*&id=not.is.null&id=neq.&name=not.is.null&name=neq.");
+      return Array.isArray(data) ? normalizeCards(data) : [];
+    }
   }
 }
 
@@ -418,7 +434,7 @@ function displayCards(cardData) {
 }
 
 function getOptionValues(key) {
-  return [...new Set(catalogOptions[key] || [])].sort();
+  return [...new Set(catalogOptions[key] || [])];
 }
 
 function populateFilter(selectElement, values) {
