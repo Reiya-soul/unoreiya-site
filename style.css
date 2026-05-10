@@ -186,17 +186,17 @@ main {
 
 .card {
   width: 210px;
-  height: 430px;
+  min-height: 0;
   box-sizing: border-box;
   background: white;
   border-radius: 14px;
-  padding: 10px;
+  padding: 10px 10px 6px;
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   overflow: hidden;
 }
 
@@ -207,9 +207,9 @@ main {
 
 .card-image {
   width: 100%;
-  height: 294px;
+  height: 276px;
   border-radius: 10px;
-  margin-bottom: 4px;
+  margin-bottom: 0;
   object-fit: contain;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -218,7 +218,7 @@ main {
 
 .image-placeholder {
   width: 100%;
-  height: 294px;
+  height: 276px;
   border-radius: 10px;
   background: #f1f5f9;
   color: #64748b;
@@ -229,7 +229,7 @@ main {
   padding: 20px;
   box-sizing: border-box;
   font-size: 0.95rem;
-  margin-bottom: 4px;
+  margin-bottom: 0;
 }
 
 .admin-image-preview {
@@ -263,7 +263,7 @@ main {
   color: #0f172a;
   font-size: 0.98rem;
   line-height: 1.35;
-  min-height: 3em;
+  height: 2.7em;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -280,6 +280,11 @@ main {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.card > p,
+.card > .tag-list {
+  display: none !important;
 }
 
 .card .tag-list {
@@ -417,12 +422,12 @@ main {
 
   .card {
     width: auto;
-    height: 410px;
+    min-height: 0;
   }
 
   .card-image,
   .image-placeholder {
-    height: 270px;
+    height: 252px;
   }
 
   .modal-body {
@@ -434,6 +439,31 @@ main {
   .search-row--four {
     grid-template-columns: 1fr;
   }
+}
+
+/* Compact catalog cards: image + two-line title only. */
+#cardList.card-grid .card {
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 10px 10px 6px !important;
+  gap: 4px !important;
+}
+
+#cardList.card-grid .card-image,
+#cardList.card-grid .card > .image-placeholder {
+  height: 276px !important;
+  margin-bottom: 0 !important;
+}
+
+#cardList.card-grid .card h2 {
+  height: 2.7em !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+}
+
+#cardList.card-grid .card > p,
+#cardList.card-grid .card > .tag-list {
+  display: none !important;
 }
 
 @media (max-width: 480px) {
